@@ -127,8 +127,8 @@ export const InformationCircleIcon = () => (
     </svg>
 );
 
-export const ExclamationTriangleIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+export const ExclamationTriangleIcon = ({ size, className = "h-5 w-5" }: { size?: number; className?: string } = {}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={size ? undefined : className} width={size} height={size} viewBox="0 0 20 20" fill="currentColor">
         <path fillRule="evenodd" d="M8.257 3.099c.636-1.026 2.242-1.026 2.878 0l6.295 10.125c.636 1.026-.168 2.276-1.439 2.276H3.4c-1.27 0-2.075-1.25-1.439-2.276L8.257 3.099zM9 13a1 1 0 112 0 1 1 0 01-2 0zm0-5a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clipRule="evenodd" />
     </svg>
 );
@@ -141,8 +141,8 @@ export const PlusCircleIcon = () => (
 
 
 
-export const ArrowDownTrayIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+export const ArrowDownTrayIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
     </svg>
 );
@@ -171,8 +171,8 @@ export const ClipboardIcon = () => (
     </svg>
 );
 
-export const ArrowLeftIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+export const ArrowLeftIcon = ({ className = "w-5 h-5" }: { className?: string } = {}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
     </svg>
 );

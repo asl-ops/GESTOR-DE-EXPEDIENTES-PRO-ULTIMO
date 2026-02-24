@@ -115,8 +115,8 @@ export const generateByClientReport = (cases: CaseRecord[], filters: ReportFilte
         const key = c.client.nif || 'Sin NIF';
         if (!acc[key]) {
             acc[key] = {
-                name: `${c.client.surnames} ${c.client.firstName}`,
-                nif: c.client.nif,
+                name: `${c.client.surnames || ''} ${c.client.firstName || ''}`,
+                nif: c.client.nif || '',
                 cases: []
             };
         }

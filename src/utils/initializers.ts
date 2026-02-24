@@ -1,6 +1,6 @@
 import { Client, Vehicle, EconomicData, Communication, FileConfig, FileCategory } from '@/types';
 
-export const getInitialClient = (): Client => ({ id: '', surnames: '', firstName: '', nif: '', address: '', city: '', province: '', postalCode: '', phone: '', email: '' });
+export const getInitialClient = (): Client => ({ id: '', nombre: '', surnames: '', firstName: '', nif: '', address: '', city: '', province: '', postalCode: '', phone: '', email: '' });
 
 export const getInitialVehicle = (): Vehicle => ({ vin: '', brand: '', model: '', year: '', engineSize: '', fuelType: '' });
 

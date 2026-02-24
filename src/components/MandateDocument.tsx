@@ -22,20 +22,22 @@ const MandateDocument: React.FC<MandateDocumentProps> = ({ data }) => {
             className="text-black"
             style={{
                 fontFamily: "'Times New Roman', Times, serif",
-                fontSize: '12pt',
-                lineHeight: 1.5,
+                fontSize: '11pt',
+                lineHeight: 1.4,
                 maxWidth: '210mm',
                 margin: '0 auto',
-                padding: '20mm',
+                padding: '15mm',
                 backgroundColor: '#ffffff',
                 color: '#000000',
+                textAlign: 'justify'
             }}
         >
             <div
                 style={{
                     textAlign: 'center',
                     fontWeight: 'bold',
-                    marginBottom: '30px',
+                    fontSize: '14pt',
+                    marginBottom: '35px',
                     textTransform: 'uppercase',
                 }}
             >

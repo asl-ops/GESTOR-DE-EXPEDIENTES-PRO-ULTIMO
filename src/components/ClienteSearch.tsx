@@ -19,13 +19,13 @@ const ClienteSearch: React.FC<ClienteSearchProps> = ({ searchQuery, setSearchQue
         if (searchQuery.length > 0) {
             const filtered = savedClients.filter((c) =>
                 `${c.surnames} ${c.firstName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                c.nif.toLowerCase().includes(searchQuery.toLowerCase())
+                (c.nif || '').toLowerCase().includes(searchQuery.toLowerCase())
             );
             setSuggestions(filtered.slice(0, 5));
             setShowSuggestions(filtered.length > 0);
 
             // Find if the search query matches a client's NIF exactly
-            const matchedClient = savedClients.find(c => c.nif.toLowerCase() === searchQuery.toLowerCase());
+            const matchedClient = savedClients.find(c => (c.nif || '').toLowerCase() === searchQuery.toLowerCase());
             if (matchedClient) {
                 setSelectedClientName(`${matchedClient.surnames}, ${matchedClient.firstName}`);
             } else {
@@ -50,7 +50,7 @@ const ClienteSearch: React.FC<ClienteSearchProps> = ({ searchQuery, setSearchQue
 
     const handleSelectClient = (client: Client) => {
         // Set the DNI/CIF/NIE instead of the full name for clearer filtering
-        setSearchQuery(client.nif);
+        setSearchQuery(client.nif || '');
         setSelectedClientName(`${client.surnames}, ${client.firstName}`);
         setShowSuggestions(false);
     };
@@ -87,7 +87,10 @@ const ClienteSearch: React.FC<ClienteSearchProps> = ({ searchQuery, setSearchQue
                             <li
                                 key={c.id}
                                 className="px-3 py-2 text-sm hover:bg-slate-100 cursor-pointer border-b last:border-b-0"
-                                onClick={() => handleSelectClient(c)}
+                                onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    handleSelectClient(c);
+                                }}
                             >
                                 <div className="font-medium text-sky-700">{c.nif}</div>
                                 <div className="text-xs text-slate-600">{c.surnames}, {c.firstName}</div>

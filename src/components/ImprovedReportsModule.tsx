@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
 import { useToast } from '../hooks/useToast';
+import SmartDatePicker from './ui/SmartDatePicker';
+import { Button } from './ui/Button';
 import {
     ImprovedReportFilters,
     ReportType,
@@ -258,13 +260,13 @@ const ImprovedReportsModule: React.FC<ImprovedReportsModuleProps> = ({ onClose }
             <div className="bg-white w-full max-w-[95vw] h-[95vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
 
                 {/* Header */}
-                <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-6 text-white flex justify-between items-center">
+                <div className="bg-white border-b border-slate-200 p-8 flex justify-between items-center">
                     <div>
-                        <h1 className="text-2xl font-bold flex items-center gap-3">
-                            <BarChart3 className="w-7 h-7" />
+                        <h1 className="text-xl font-normal text-[#4c739a] flex items-center gap-3 uppercase tracking-widest">
+                            <BarChart3 className="w-6 h-6 opacity-70" />
                             Analítica y Rendimiento
                         </h1>
-                        <p className="text-blue-100 text-sm mt-1">Selecciona un informe y aplica los filtros necesarios</p>
+                        <p className="text-slate-400 text-[10px] uppercase tracking-widest mt-2">v3.16.0 • Sistema de Gestión de Expedientes</p>
                     </div>
                     <button
                         onClick={onClose}
@@ -280,35 +282,33 @@ const ImprovedReportsModule: React.FC<ImprovedReportsModuleProps> = ({ onClose }
 
                         {/* Rango de Fecha de Apertura */}
                         <div className="lg:col-span-3">
-                            <label className="block text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">
-                                <Calendar className="w-3 h-3 inline mr-1" />
+                            <label className="block text-[10px] font-normal text-slate-500 mb-2 uppercase tracking-widest">
+                                <Calendar className="w-3 h-3 inline mr-1 opacity-70" />
                                 Fecha Apertura
                             </label>
                             <div className="flex gap-2">
-                                <input
-                                    type="date"
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                <SmartDatePicker
                                     value={filters.openingDateRange?.start || ''}
-                                    onChange={(e) => setFilters({
+                                    onChange={(val) => setFilters({
                                         ...filters,
                                         openingDateRange: {
-                                            start: e.target.value,
-                                            end: filters.openingDateRange?.end || e.target.value
+                                            start: val,
+                                            end: filters.openingDateRange?.end || val
                                         }
                                     })}
+                                    className="flex-1"
                                 />
                                 <span className="self-center text-slate-400">→</span>
-                                <input
-                                    type="date"
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                <SmartDatePicker
                                     value={filters.openingDateRange?.end || ''}
-                                    onChange={(e) => setFilters({
+                                    onChange={(val) => setFilters({
                                         ...filters,
                                         openingDateRange: {
-                                            start: filters.openingDateRange?.start || e.target.value,
-                                            end: e.target.value
+                                            start: filters.openingDateRange?.start || val,
+                                            end: val
                                         }
                                     })}
+                                    className="flex-1"
                                 />
                             </div>
                         </div>
@@ -316,35 +316,33 @@ const ImprovedReportsModule: React.FC<ImprovedReportsModuleProps> = ({ onClose }
                         {/* Rango de Fecha de Cierre (solo si Cerrados) */}
                         {filters.statusType === 'cerrados' && (
                             <div className="lg:col-span-3">
-                                <label className="block text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">
-                                    <Calendar className="w-3 h-3 inline mr-1" />
+                                <label className="block text-[10px] font-normal text-slate-500 mb-2 uppercase tracking-widest">
+                                    <Calendar className="w-3 h-3 inline mr-1 opacity-70" />
                                     Fecha Cierre
                                 </label>
                                 <div className="flex gap-2">
-                                    <input
-                                        type="date"
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                    <SmartDatePicker
                                         value={filters.closingDateRange?.start || ''}
-                                        onChange={(e) => setFilters({
+                                        onChange={(val) => setFilters({
                                             ...filters,
                                             closingDateRange: {
-                                                start: e.target.value,
-                                                end: filters.closingDateRange?.end || e.target.value
+                                                start: val,
+                                                end: filters.closingDateRange?.end || val
                                             }
                                         })}
+                                        className="flex-1"
                                     />
                                     <span className="self-center text-slate-400">→</span>
-                                    <input
-                                        type="date"
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                    <SmartDatePicker
                                         value={filters.closingDateRange?.end || ''}
-                                        onChange={(e) => setFilters({
+                                        onChange={(val) => setFilters({
                                             ...filters,
                                             closingDateRange: {
-                                                start: filters.closingDateRange?.start || e.target.value,
-                                                end: e.target.value
+                                                start: filters.closingDateRange?.start || val,
+                                                end: val
                                             }
                                         })}
+                                        className="flex-1"
                                     />
                                 </div>
                             </div>
@@ -414,7 +412,7 @@ const ImprovedReportsModule: React.FC<ImprovedReportsModuleProps> = ({ onClose }
 
                         {/* Buscador Rápido con Autocompletado - ANCHO COMPLETO */}
                         <div className="lg:col-span-12" ref={searchWrapperRef}>
-                            <label className="block text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">
+                            <label className="block text-[10px] font-normal text-slate-500 mb-2 uppercase tracking-widest">
                                 Cliente / DNI / NIE / CIF
                             </label>
                             <div className="flex gap-4">
@@ -456,7 +454,10 @@ const ImprovedReportsModule: React.FC<ImprovedReportsModuleProps> = ({ onClose }
                                                 <button
                                                     key={index}
                                                     className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors border-b border-slate-50 last:border-0 flex justify-between items-center"
-                                                    onClick={() => selectSuggestion(suggestion)}
+                                                    onMouseDown={(e) => {
+                                                        e.preventDefault();
+                                                        selectSuggestion(suggestion);
+                                                    }}
                                                 >
                                                     <span className="font-mono font-bold text-slate-900">{suggestion.main}</span>
                                                     <span className="text-slate-500 ml-3 truncate flex-1 text-right">{suggestion.secondary}</span>
@@ -482,60 +483,45 @@ const ImprovedReportsModule: React.FC<ImprovedReportsModuleProps> = ({ onClose }
                 </div>
 
                 {/* Tipos de Informe */}
-                <div className="bg-white border-b border-slate-200 p-4">
-                    <div className="flex gap-2 flex-wrap">
+                <div className="bg-white border-b border-slate-200 px-6">
+                    <div className="flex gap-6 flex-wrap">
                         <button
                             onClick={() => setSelectedReport('listado_general')}
-                            className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${selectedReport === 'listado_general'
-                                ? 'bg-blue-600 text-white shadow-lg'
-                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                                }`}
+                            className={`app-tab flex items-center gap-2 ${selectedReport === 'listado_general' ? 'app-tab-active' : ''}`}
                         >
-                            <FileText className="w-4 h-4 inline mr-2" />
+                            <FileText className="w-4 h-4" />
                             Listado General
                         </button>
 
                         <button
                             onClick={() => setSelectedReport('listado_abiertos_cerrados')}
-                            className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${selectedReport === 'listado_abiertos_cerrados'
-                                ? 'bg-blue-600 text-white shadow-lg'
-                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                                }`}
+                            className={`app-tab flex items-center gap-2 ${selectedReport === 'listado_abiertos_cerrados' ? 'app-tab-active' : ''}`}
                         >
-                            <Filter className="w-4 h-4 inline mr-2" />
+                            <Filter className="w-4 h-4" />
                             Abiertos / Cerrados
                         </button>
 
                         <button
                             onClick={() => setSelectedReport('rendimiento_basico')}
-                            className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${selectedReport === 'rendimiento_basico'
-                                ? 'bg-blue-600 text-white shadow-lg'
-                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                                }`}
+                            className={`app-tab flex items-center gap-2 ${selectedReport === 'rendimiento_basico' ? 'app-tab-active' : ''}`}
                         >
-                            <BarChart3 className="w-4 h-4 inline mr-2" />
+                            <BarChart3 className="w-4 h-4" />
                             Rendimiento Básico
                         </button>
 
                         <button
                             onClick={() => setSelectedReport('mas_30_dias')}
-                            className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${selectedReport === 'mas_30_dias'
-                                ? 'bg-orange-600 text-white shadow-lg'
-                                : 'bg-orange-50 text-orange-700 hover:bg-orange-100'
-                                }`}
+                            className={`app-tab flex items-center gap-2 ${selectedReport === 'mas_30_dias' ? 'app-tab-active' : ''}`}
                         >
-                            <Clock className="w-4 h-4 inline mr-2" />
+                            <Clock className="w-4 h-4" />
                             +30 días sin cerrar
                         </button>
 
                         <button
                             onClick={() => setSelectedReport('incompletos')}
-                            className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${selectedReport === 'incompletos'
-                                ? 'bg-red-600 text-white shadow-lg'
-                                : 'bg-red-50 text-red-700 hover:bg-red-100'
-                                }`}
+                            className={`app-tab flex items-center gap-2 ${selectedReport === 'incompletos' ? 'app-tab-active' : ''}`}
                         >
-                            <AlertCircle className="w-4 h-4 inline mr-2" />
+                            <AlertCircle className="w-4 h-4" />
                             Incompletos
                         </button>
                     </div>
@@ -545,9 +531,9 @@ const ImprovedReportsModule: React.FC<ImprovedReportsModuleProps> = ({ onClose }
                 {showPreview && previewData && (
                     <div className="flex-1 overflow-auto p-6 bg-slate-50">
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                            <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+                            <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
                                 <div>
-                                    <h3 className="font-bold text-slate-800 text-lg">{previewData.title}</h3>
+                                    <h3 className="font-normal text-[#4c739a] text-sm uppercase tracking-widest">{previewData.title}</h3>
                                     <p className="text-sm text-slate-500 mt-1">
                                         Mostrando {Math.min(10, previewData.totalCount)} de {previewData.totalCount} registros
                                     </p>
@@ -563,9 +549,9 @@ const ImprovedReportsModule: React.FC<ImprovedReportsModuleProps> = ({ onClose }
                             <div className="overflow-x-auto">
                                 <table className="w-full">
                                     <thead>
-                                        <tr className="bg-blue-600 text-white">
+                                        <tr className="bg-slate-50 text-slate-500 border-b border-slate-200">
                                             {previewData.headers.map((header, idx) => (
-                                                <th key={idx} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">
+                                                <th key={idx} className="px-4 py-3 text-left text-[10px] font-normal uppercase tracking-widest">
                                                     {header}
                                                 </th>
                                             ))}
@@ -586,13 +572,13 @@ const ImprovedReportsModule: React.FC<ImprovedReportsModuleProps> = ({ onClose }
                             </div>
 
                             {previewData.summary && previewData.summary.length > 0 && (
-                                <div className="bg-blue-50 px-6 py-4 border-t border-blue-100">
-                                    <h4 className="font-semibold text-blue-900 mb-3">📊 Resumen</h4>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                <div className="bg-slate-50 px-6 py-8 border-t border-slate-200">
+                                    <h4 className="font-normal text-[#4c739a] text-[10px] uppercase tracking-widest mb-6">📊 Resumen de Informe</h4>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
                                         {previewData.summary.map((item, idx) => (
-                                            <div key={idx} className="flex flex-col">
-                                                <span className="text-xs text-blue-600 font-medium uppercase">{item.label}</span>
-                                                <span className="text-2xl font-bold text-blue-900">{item.value}</span>
+                                            <div key={idx} className="flex flex-col gap-1">
+                                                <span className="text-[9px] text-slate-400 font-normal uppercase tracking-widest">{item.label}</span>
+                                                <span className="text-xl font-normal text-[#4c739a]">{item.value}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -630,29 +616,29 @@ const ImprovedReportsModule: React.FC<ImprovedReportsModuleProps> = ({ onClose }
                     </div>
 
                     <div className="flex gap-3">
-                        <button
+                        <Button
                             onClick={handleExportExcel}
-                            className="px-5 py-2.5 border-2 border-emerald-600 text-emerald-700 rounded-lg font-semibold hover:bg-emerald-50 transition-colors flex items-center gap-2"
+                            variant="outline"
+                            className="text-emerald-700 hover:bg-emerald-50"
+                            icon={FileSpreadsheet}
                         >
-                            <FileSpreadsheet className="w-4 h-4" />
                             Excel
-                        </button>
-
-                        <button
+                        </Button>
+                        <Button
                             onClick={handleExportPDF}
-                            className="px-5 py-2.5 border-2 border-red-600 text-red-700 rounded-lg font-semibold hover:bg-red-50 transition-colors flex items-center gap-2"
+                            variant="outline"
+                            className="text-red-700 hover:bg-red-50"
+                            icon={Download}
                         >
-                            <Download className="w-4 h-4" />
                             PDF
-                        </button>
-
-                        <button
+                        </Button>
+                        <Button
                             onClick={handleGenerateReport}
-                            className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-bold hover:from-blue-700 hover:to-blue-800 shadow-lg transition-all flex items-center gap-2"
+                            variant="primary"
+                            icon={BarChart3}
                         >
-                            <BarChart3 className="w-5 h-5" />
                             GENERAR INFORME
-                        </button>
+                        </Button>
                     </div>
                 </div>
             </div>

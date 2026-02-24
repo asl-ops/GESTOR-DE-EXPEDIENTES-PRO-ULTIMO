@@ -23,13 +23,13 @@ export const prepareMandateData = (
 
     const mandateData: MandateData = {
         mandante: {
-            nombre: `${client.firstName} ${client.surnames}`,
-            dni: client.nif,
+            nombre: (client.firstName || client.surnames) ? `${client.firstName || ''} ${client.surnames || ''}`.trim() : (client as any).nombre || '',
+            dni: client.nif || (client as any).documento || '',
             domicilio: {
                 poblacion: client.city || addressParts.poblacion,
                 calle: addressParts.calle,
                 numero: addressParts.numero,
-                cp: client.postalCode,
+                cp: client.postalCode || '',
             },
             representante: selectedAdministrator ? {
                 nombre: `${selectedAdministrator.firstName} ${selectedAdministrator.surnames}`,

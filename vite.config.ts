@@ -17,6 +17,7 @@ export default defineConfig(({ mode }) => {
   console.log(`API Key detectada: ${apiKey ? 'SÍ (Termina en ...' + apiKey.slice(-4) + ')' : 'NO - Revisa tu archivo .env'}`);
   console.log('-----------------------------------------------------');
   return {
+    base: '/',
     plugins: [react()],
     resolve: {
       alias: {
@@ -26,17 +27,21 @@ export default defineConfig(({ mode }) => {
     // Configuración del servidor de desarrollo optimizada para entornos cloud (Stitch/IDX)
     server: {
       host: '0.0.0.0',  // Permite acceso desde fuera de localhost
-      port: 8080,       // Cambiamos a 8080, más amigable con proxies de Google
+      port: 5174,       // Cambiado a 5174 para evitar conflicto con Fac-Express
       strictPort: true, // Falla si el puerto está en uso
       open: false,      // Desactivado para evitar errores en entornos remotos
+      hmr: {
+        overlay: false, // Evita que los errores de HMR bloqueen la pantalla en entornos cloud
+      },
     },
     // Expone la API_KEY al código del cliente como process.env.API_KEY
     define: {
       'process.env.API_KEY': JSON.stringify(env.API_KEY || env.VITE_API_KEY || env.VITE_GEMINI_API_KEY || env.GEMINI_API_KEY)
     },
     // OPTIONAL: Optimize dependencies for better performance
-    // optimizeDeps: {
-    //   exclude: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
-    // },
+    // Se recomienda excluir firebase si experimentas errores de gstatic en entornos cloud
+    optimizeDeps: {
+      exclude: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
+    },
   }
 });

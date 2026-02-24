@@ -45,11 +45,15 @@ export interface Vehicle {
   fuelType: string;
 }
 
+export type CommunicationType = 'call' | 'email' | 'whatsapp' | 'note';
+
 export interface Communication {
   id: string;
-  date: string;
+  date: string; // ISO date (backward compat)
+  timestamp?: string; // ISO datetime for full precision
   concept: string;
   authorUserId: string;
+  type?: CommunicationType; // Optional: call, email, whatsapp, note
 }
 
 // Configuración de campos dinámicos

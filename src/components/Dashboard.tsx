@@ -1,197 +1,414 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import {
-    GridViewIcon,
-    ListViewIcon,
-} from './icons';
-import { Lock, RotateCcw, Copy, FileText, Trash2, Users } from 'lucide-react';
-import ExpedienteCard from './ExpedienteCard';
-import ExpedienteListItem from './ExpedienteListItem';
-import ConfirmationModal from './ConfirmationModal';
-import FilterPanel from './FilterPanel';
-import PaginationControls from './PaginationControls';
-import NewCaseModal from './NewCaseModal';
-import ImprovedReportsModule from './ImprovedReportsModule';
-import KanbanView from './KanbanView';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Plus, Copy, RotateCcw, ShieldCheck, Lock, Printer, Trash2, ArrowUpDown, ArrowUpRight, Eye, Filter, Search, X, MoreHorizontal, FileText, Edit3, Receipt, History, ChevronDown } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
 import { useToast } from '../hooks/useToast';
-import { FileCategory, CaseRecord } from '../types';
+import { useBilling } from '../hooks/useBilling';
+import { useProformas } from '../hooks/useProformas';
+import PaginationControls from './PaginationControls';
+import DashboardModals from './DashboardModals';
+import { ResizableExplorerTable } from './ui/ResizableExplorerTable';
+import CasePreviewModal from './CasePreviewModal';
+import { CaseRecord, CaseStatus, PrefixConfig } from '../types';
+import type { PageSize } from './PaginationControls';
 import { getPrefixes } from '../services/prefixService';
-import { PrefixConfig } from '../types';
+import { Button } from './ui/Button';
+import { cn } from '../utils/cn';
+import { BackToHubButton } from './ui/BackToHubButton';
+import ExpedienteFilterPanel, { ExpedienteFilters } from './ExpedienteFilterPanel';
+import Breadcrumbs from './ui/Breadcrumbs';
+import { ColumnSelectorMenu, type ColumnSelectorOption } from './ui/ColumnSelectorMenu';
+import {
+    consumeDashboardReturnContext,
+    saveDashboardReturnContext,
+    type DashboardReturnContext,
+    type DashboardSortConfig
+} from '@/utils/dashboardReturnContext';
+import { navigateToModule } from '@/utils/moduleNavigation';
+import {
+    pushRecentClientIdentifier,
+    readRecentClientIdentifiers,
+    normalizeRecentClientIdentifier,
+    type RecentClientIdentifierEntry
+} from '@/utils/recentClientIdentifiers';
 
 interface DashboardProps {
-    onSelectCase: (c: any) => void;
-    onCreateNewCase: (category: FileCategory, subType?: string) => void;
+    onSelectCase: (caseId: string) => void;
+    onCreateNewCase: (type?: string, initialClientId?: string) => void;
     onShowResponsibleDashboard: () => void;
 }
 
-// ... existing code ...
+interface SearchSuggestion {
+    label: string;
+    document: string;
+    type: 'name' | 'doc';
+    clientId?: string;
+}
+
+const normalizeIdentifier = (value?: string | null) =>
+    (value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const DASHBOARD_VISIBLE_COLUMNS_KEY = 'dashboard-visible-columns-v1';
 
 const Dashboard: React.FC<DashboardProps> = ({
     onSelectCase,
     onCreateNewCase,
-    onShowResponsibleDashboard,
+    onShowResponsibleDashboard: _onShowResponsibleDashboard,
 }) => {
-    const { caseHistory, appSettings, deleteCase, saveMultipleCases, saveCase } = useAppContext();
+    const { caseHistory, savedClients, appSettings, saveMultipleCases, users, currentUser } = useAppContext();
     const { addToast } = useToast();
-    const [viewMode, setViewMode] = useState<'grid' | 'list' | 'kanban'>('list'); // Vista lista por defecto
-    const [searchQuery, setSearchQuery] = useState('');
+    const { createDeliveryNoteFromCase } = useBilling();
+    const { createProformaFromCase } = useProformas();
     const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
     const [selectedClientLabel, setSelectedClientLabel] = useState('');
     const [identifierFilter, setIdentifierFilter] = useState('');
-    const [vehicleFilter, setVehicleFilter] = useState('');
+    const [prefixFilter, setPrefixFilter] = useState('');
+    const [responsibleFilter, setResponsibleFilter] = useState<string>('');
+    const [responsibleLabel, setResponsibleLabel] = useState<string>('');
     const [statusFilter, setStatusFilter] = useState('Todos');
     const [categoryFilter, setCategoryFilter] = useState('Todos');
     const [prefixes, setPrefixes] = useState<PrefixConfig[]>([]);
     const [situationFilter, setSituationFilter] = useState('Todos');
-    const [dateFilterType, setDateFilterType] = useState<'createdAt' | 'updatedAt'>('createdAt');
+    const [dateFilterType, setDateFilterType] = useState<'createdAt' | 'closedAt'>('createdAt');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
-    const [caseToDelete, setCaseToDelete] = useState<string | null>(null);
+    const [_caseToDelete, _setCaseToDelete] = useState<string | null>(null);
     const [isBatchDeleteModalOpen, setIsBatchDeleteModalOpen] = useState(false);
-    const [isNewCaseModalOpen, setIsNewCaseModalOpen] = useState(false);
-    const [isReportsModuleOpen, setIsReportsModuleOpen] = useState(false);
-    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
-    const [selectedCases, setSelectedCases] = useState<string[]>([]);
+    const [_isReportsModuleOpen, _setIsReportsModuleOpen] = useState(false);
+    const [sortConfig, setSortConfig] = useState<DashboardSortConfig | null>(null);
     const [isBatchCloseModalOpen, setIsBatchCloseModalOpen] = useState(false);
-    const [caseToClose, setCaseToClose] = useState<CaseRecord | null>(null);
+    const [_caseToClose, _setCaseToClose] = useState<CaseRecord | null>(null);
+    const [caseToPrint, setCaseToPrint] = useState<CaseRecord | null>(null);
+    const [previewCase, setPreviewCase] = useState<CaseRecord | null>(null);
 
-    // Pagination states
+    // Resizable sidebar state
+    const [_isResizing, _setIsResizing] = useState(false);
+    const [_sidebarWidth, _setSidebarWidth] = useState(320);
+    const [selectedCases, setSelectedCases] = useState<string[]>([]);
     const [currentPage, setCurrentPage] = useState(1);
-    const [pageSize, setPageSize] = useState(25);
+    const [pageSize, setPageSize] = useState<PageSize>(25);
 
-    // 🆕 Pre-aplicar filtro desde URL (navegación desde ClientExplorer)
+    const [searchQuery, setSearchQuery] = useState('');
+
+    // Menu contextual state
+    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+    const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    // New Expediente Filter Panel state
+    const [isExpedienteFilterPanelOpen, setIsExpedienteFilterPanelOpen] = useState(false);
+    const [expedienteFilters, setExpedienteFilters] = useState<ExpedienteFilters>({});
+    const dashboardColumnOptions: ColumnSelectorOption[] = [
+        { id: 'identifier', label: 'Identificador' },
+        { id: 'client', label: 'Cliente' },
+        { id: 'totalAmount', label: 'Saldo' },
+        { id: 'createdAt', label: 'Apertura' },
+        { id: 'closedAt', label: 'Cierre' },
+        { id: 'notes', label: 'Observaciones' },
+        { id: 'quick_view', label: 'Vista rápida' },
+        { id: 'responsible', label: 'Responsable' }
+    ];
+    const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
+        try {
+            const raw = localStorage.getItem(DASHBOARD_VISIBLE_COLUMNS_KEY);
+            if (!raw) return dashboardColumnOptions.map(c => c.id);
+            const parsed = JSON.parse(raw) as string[];
+            const allowed = new Set(dashboardColumnOptions.map(c => c.id));
+            const filtered = parsed.filter(id => allowed.has(id));
+            return filtered.length > 0 ? filtered : dashboardColumnOptions.map(c => c.id);
+        } catch {
+            return dashboardColumnOptions.map(c => c.id);
+        }
+    });
+
+    // Collapsible search bar state
+    const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+    const searchInputRef = useRef<HTMLInputElement>(null);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const suggestionsRef = useRef<HTMLDivElement>(null);
+    const recentsRef = useRef<HTMLDivElement>(null);
+    const skipOpenSuggestionsOnNextFocusRef = useRef(false);
+    const [recentIdentifiers, setRecentIdentifiers] = useState<RecentClientIdentifierEntry[]>([]);
+    const [isRecentsOpen, setIsRecentsOpen] = useState(false);
+    const visibleColumnsSet = useMemo(() => new Set(visibleColumns), [visibleColumns]);
+
+    useEffect(() => {
+        localStorage.setItem(DASHBOARD_VISIBLE_COLUMNS_KEY, JSON.stringify(visibleColumns));
+    }, [visibleColumns]);
+
+    const toggleVisibleColumn = (id: string) => {
+        setVisibleColumns(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]);
+    };
+
+    useEffect(() => {
+        const context = consumeDashboardReturnContext();
+        if (!context) return;
+
+        setSelectedClientId(context.clientId || null);
+        setSelectedClientLabel(context.clientLabel || '');
+        setSearchQuery(context.searchQuery || context.identifier || '');
+        setIdentifierFilter(context.identifierFilter || '');
+        setPrefixFilter(context.prefixFilter || '');
+        setResponsibleFilter(context.responsibleFilter || '');
+        setResponsibleLabel(context.responsibleLabel || '');
+        setStatusFilter(context.statusFilter || 'Todos');
+        setCategoryFilter(context.categoryFilter || 'Todos');
+        setSituationFilter(context.situationFilter || 'Todos');
+        setDateFilterType(context.dateFilterType || 'createdAt');
+        setStartDate(context.startDate || '');
+        setEndDate(context.endDate || '');
+        setSortConfig(context.sortConfig ?? null);
+        setCurrentPage(context.currentPage && context.currentPage > 0 ? context.currentPage : 1);
+        setPageSize(context.pageSize || 25);
+        setExpedienteFilters(context.expedienteFilters || {});
+        setIsExpedienteFilterPanelOpen(!!context.isExpedienteFilterPanelOpen);
+        setIsSearchExpanded(context.isSearchExpanded ?? true);
+    }, []);
+
+    const selectedClientDocument = useMemo(() => {
+        if (!selectedClientId) return '';
+        const selectedClient = savedClients.find(c => c.id === selectedClientId);
+        return (selectedClient?.documento || selectedClient?.nif || '').trim();
+    }, [selectedClientId, savedClients]);
+
+    const suggestions = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        if (q.length < 2) return [];
+
+        const matches = new Map<string, SearchSuggestion>();
+
+        // Optimized check: unique by document mostly
+        savedClients.forEach(c => {
+            const name = c.nombre || `${c.firstName || ''} ${c.surnames || ''}`.trim();
+            const doc = c.documento || c.nif || '';
+
+            if (name.toLowerCase().includes(q)) {
+                matches.set(`name-${doc}`, { label: name, document: doc, type: 'name', clientId: c.id ?? undefined });
+            }
+            if (doc.toLowerCase().includes(q)) {
+                matches.set(`doc-${doc}`, { label: name, document: doc, type: 'doc', clientId: c.id ?? undefined });
+            }
+        });
+
+        caseHistory.forEach(c => {
+            const name = c.clientSnapshot?.nombre || `${c.client.firstName || ''} ${c.client.surnames || ''}`.trim();
+            const doc = c.clientSnapshot?.documento || c.client.nif || '';
+
+            if (name.toLowerCase().includes(q)) {
+                matches.set(`name-${doc}`, { label: name, document: doc, type: 'name', clientId: c.clienteId ?? undefined });
+            }
+            if (doc.toLowerCase().includes(q)) {
+                matches.set(`doc-${doc}`, { label: name, document: doc, type: 'doc', clientId: c.clienteId ?? undefined });
+            }
+        });
+
+        // Limit to 8 most relevant
+        return Array.from(matches.values()).slice(0, 8);
+    }, [searchQuery, savedClients, caseHistory]);
+
+    const resolvedSelectedClientName = useMemo(() => {
+        if (selectedClientLabel.trim()) return selectedClientLabel;
+
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return '';
+
+        const exactMatches = suggestions.filter(s =>
+            s.document.toLowerCase() === q || s.label.toLowerCase() === q
+        );
+
+        if (exactMatches.length === 1) return exactMatches[0].label;
+        return '';
+    }, [searchQuery, selectedClientLabel, suggestions]);
+
+    const getDisplayNameForIdentifier = useCallback((identifier: string) => {
+        const normalized = normalizeRecentClientIdentifier(identifier);
+        if (!normalized) return '';
+        const match = savedClients.find(client =>
+            normalizeRecentClientIdentifier(client.documento) === normalized ||
+            normalizeRecentClientIdentifier(client.nif) === normalized
+        );
+        return match?.nombre || match?.legalName || '';
+    }, [savedClients]);
+
+    useEffect(() => {
+        const loaded = readRecentClientIdentifiers(currentUser?.id);
+        setRecentIdentifiers(loaded.map(entry => ({
+            identifier: entry.identifier,
+            displayName: entry.displayName || getDisplayNameForIdentifier(entry.identifier)
+        })));
+    }, [currentUser?.id, getDisplayNameForIdentifier]);
+
+
+    // Filter Logic
     useEffect(() => {
         const applyFilterFromUrl = () => {
             const params = new URLSearchParams(window.location.hash.split('?')[1]);
             const clientIdFromUrl = params.get('clientId');
+            const identifierFromUrl = params.get('identifier');
+            const clientNameFromUrl = params.get('clientName');
 
-            console.log('🔍 Verificando URL params:', { clientIdFromUrl, hash: window.location.hash });
+            if (identifierFromUrl) {
+                setSearchQuery(identifierFromUrl);
+            }
+            if (clientNameFromUrl) {
+                setSelectedClientLabel(clientNameFromUrl);
+            }
 
-            // Solo aplicar si hay clientId en URL y aún no hemos aplicado filtro
             if (clientIdFromUrl && !selectedClientId) {
-                console.log('📋 Aplicando filtro desde URL:', clientIdFromUrl);
-
-                // Resolver cliente por ID para obtener label actualizado
                 import('@/services/clientService').then(({ getClientById }) => {
-                    getClientById(clientIdFromUrl)
-                        .then((client) => {
-                            if (client) {
-                                console.log('✅ Cliente encontrado:', client);
-                                // Construir label con misma lógica que ClientTypeahead
-                                const parts = [client.nombre];
-                                if (client.documento) parts.push(client.documento);
-                                if (client.telefono) parts.push(client.telefono);
-
-                                setSelectedClientId(client.id);
-                                setSelectedClientLabel(parts.join(' — '));
-                                console.log('🎯 Filtro aplicado:', client.id);
+                    getClientById(clientIdFromUrl).then((client) => {
+                        if (client) {
+                            setSelectedClientId(client.id);
+                            setSelectedClientLabel(`${client.nombre}`);
+                            if (!identifierFromUrl) {
+                                setSearchQuery(client.documento || client.nif || '');
                             }
-                        })
-                        .catch((error) => {
-                            console.error('❌ Error buscando cliente:', error);
-                        })
-                        .finally(() => {
-                            // Limpiar URL usando hash routing (con delay para evitar race condition)
-                            setTimeout(() => {
-                                if (window.location.hash.includes('clientId=')) {
-                                    window.location.hash = '/';
-                                }
-                            }, 100);
-                        });
+                        }
+                    }).finally(() => {
+                        setTimeout(() => { if (window.location.hash.includes('clientId=')) window.location.hash = '/'; }, 100);
+                    });
                 });
             }
         };
-
-        // Ejecutar al montar
         applyFilterFromUrl();
-
-        // Escuchar cambios de hash
         window.addEventListener('hashchange', applyFilterFromUrl);
-
-        return () => {
-            window.removeEventListener('hashchange', applyFilterFromUrl);
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Solo montar/desmontar listener
-
-    // Removed static FILE_CATEGORIES, will load prefixes dynamically
+        return () => window.removeEventListener('hashchange', applyFilterFromUrl);
+    }, [selectedClientId]);
 
     const processedCases = useMemo(() => {
         if (!caseHistory) return [];
         const filtered = caseHistory.filter(c => {
             if (c.status === 'Eliminado') return false;
 
-            // 🆕 FILTRO POR CLIENTE (usa clienteId SOLO si está seleccionado)
+            // 1. Legacy Filters (Keep for compatibility until fully migrated)
             if (selectedClientId) {
-                // Si hay clienteId seleccionado, filtrar SOLO por ese campo
-                // Los expedientes viejos sin clienteId no aparecerán (comportamiento esperado)
-                const matchesClient = c.clienteId === selectedClientId;
-                if (!matchesClient) return false;
+                const caseDocument = normalizeIdentifier(c.clientSnapshot?.documento || c.client.nif || '');
+                const normalizedSelectedDocument = normalizeIdentifier(selectedClientDocument);
+                const matchesSameClient = c.clienteId === selectedClientId;
+                const matchesSameIdentifier = normalizedSelectedDocument !== '' && caseDocument === normalizedSelectedDocument;
+
+                if (!matchesSameClient && !matchesSameIdentifier) return false;
             }
 
-            // Identifier filter (searches in client NIF/CIF/NIE)
-            const matchesIdentifier = !identifierFilter ||
-                c.client.nif.toLowerCase().includes(identifierFilter.toLowerCase());
+            const matchesSearchQuery = !searchQuery || (() => {
+                const normalizedQuery = searchQuery.toLowerCase();
+                const normalizedQueryId = normalizeIdentifier(searchQuery);
+                const clientName = (c.clientSnapshot?.nombre || `${c.client.firstName} ${c.client.surnames}`).toLowerCase();
+                const snapshotDocument = (c.clientSnapshot?.documento || '').toLowerCase();
+                const currentDocument = (c.client.nif || '').toLowerCase();
+                const normalizedCaseIdentifier = normalizeIdentifier(c.clientSnapshot?.documento || c.client.nif || '');
 
-            // Client search (DNI/NIE/CIF, names) - normalized to ignore commas and extra spaces
-            // NOTA: Este filtro solo aplica si NO hay selectedClientId (búsqueda por texto)
-            const matchesSearch = selectedClientId || !searchQuery || (() => {
-                const normalizedQuery = searchQuery.toLowerCase().replace(/[,\s]+/g, ' ').trim();
-                const normalizedSurnames = c.client.surnames.toLowerCase().replace(/[,\s]+/g, ' ').trim();
-                const normalizedFirstName = c.client.firstName.toLowerCase().replace(/[,\s]+/g, ' ').trim();
-                const normalizedNif = c.client.nif.toLowerCase().replace(/[,\s]+/g, ' ').trim();
-                const normalizedFullName = `${normalizedSurnames} ${normalizedFirstName}`;
-
-                return normalizedFullName.includes(normalizedQuery) ||
-                    normalizedSurnames.includes(normalizedQuery) ||
-                    normalizedFirstName.includes(normalizedQuery) ||
-                    normalizedNif.includes(normalizedQuery);
+                return clientName.includes(normalizedQuery) ||
+                    (c.fileNumber || '').toLowerCase().includes(normalizedQuery) ||
+                    snapshotDocument.includes(normalizedQuery) ||
+                    currentDocument.includes(normalizedQuery) ||
+                    (normalizedQueryId !== '' && normalizedCaseIdentifier.includes(normalizedQueryId));
             })();
+            if (!matchesSearchQuery) return false;
 
-            // Vehicle/matrícula search (normalized: no spaces, case-insensitive)
-            const matchesVehicle = !vehicleFilter ||
-                (c.vehicle?.vin || '').toLowerCase().replace(/\s/g, '')
-                    .includes(vehicleFilter.toLowerCase().replace(/\s/g, ''));
-
-            const matchesStatus = statusFilter === 'Todos' || c.status === statusFilter;
-            const matchesCategory = categoryFilter === 'Todos' || c.fileConfig.category === categoryFilter;
-            const matchesSituation = situationFilter === 'Todos' ||
-                (c.situation || 'Iniciado') === situationFilter ||
-                (situationFilter === 'Cerrado' && c.status === 'Cerrado');
-
-            let matchesDate = true;
-            if (startDate && endDate) {
-                const dateToCheck = new Date(c[dateFilterType]);
-                const start = new Date(startDate);
-                const end = new Date(endDate);
-                end.setHours(23, 59, 59, 999);
-                matchesDate = dateToCheck >= start && dateToCheck <= end;
+            // 2. New ExpedienteFilters Logic
+            if (expedienteFilters.numeroExpediente && !(c.fileNumber || '').toLowerCase().includes(expedienteFilters.numeroExpediente.toLowerCase())) return false;
+            if (expedienteFilters.prefijoId && c.fileNumber?.split('-')[0] !== prefixes.find(p => p.id === expedienteFilters.prefijoId)?.code) return false;
+            if (expedienteFilters.clienteTexto) {
+                const q = expedienteFilters.clienteTexto.toLowerCase();
+                const clientName = (c.clientSnapshot?.nombre || `${c.client.firstName} ${c.client.surnames}`).toLowerCase();
+                const matches = clientName.includes(q) || (c.clientSnapshot?.documento || '').toLowerCase().includes(q);
+                if (!matches) return false;
+            }
+            if (expedienteFilters.identificadorDesde || expedienteFilters.identificadorHasta) {
+                const doc = (c.clientSnapshot?.documento || '').replace(/\D/g, '');
+                const docNum = parseInt(doc, 10);
+                if (!isNaN(docNum)) {
+                    if (expedienteFilters.identificadorDesde && docNum < parseInt(expedienteFilters.identificadorDesde, 10)) return false;
+                    if (expedienteFilters.identificadorHasta && docNum > parseInt(expedienteFilters.identificadorHasta, 10)) return false;
+                }
             }
 
-            return matchesIdentifier && matchesSearch && matchesVehicle && matchesStatus && matchesCategory && matchesDate && matchesSituation;
+            // Situación y Estado
+            const situacion = expedienteFilters.situacion || situationFilter;
+            if (situacion !== 'Todos' && situacion !== '') {
+                const s = c.situation || 'Iniciado';
+                if (situacion === 'Abierto' && c.status === 'Cerrado') return false;
+                if (situacion === 'Cerrado' && c.status !== 'Cerrado') return false;
+                if (situacion !== 'Abierto' && situacion !== 'Cerrado' && s !== situacion) return false;
+            }
+
+            const estado = expedienteFilters.estado || (statusFilter !== 'Todos' ? statusFilter : undefined);
+            if (estado && c.status !== estado) return false;
+
+            const responsable = expedienteFilters.responsable || responsibleFilter;
+            if (responsable && c.fileConfig?.responsibleUserId !== responsable) return false;
+
+            // Fechas
+            const tipoFecha = expedienteFilters.tipoFecha || (dateFilterType === 'createdAt' ? 'apertura' : 'cierre');
+            const fechaD = expedienteFilters.fechaDesde || startDate;
+            const fechaH = expedienteFilters.fechaHasta || endDate;
+
+            if (fechaD || fechaH) {
+                const key = tipoFecha === 'apertura' ? 'createdAt' :
+                    tipoFecha === 'cierre' ? 'closedAt' :
+                        tipoFecha === 'actualizacion' ? 'updatedAt' : 'createdAt';
+
+                const dateToCheck = c[key as keyof CaseRecord] ? new Date(c[key as keyof CaseRecord] as string) : null;
+                if (!dateToCheck) return false;
+
+                if (fechaD && dateToCheck < new Date(fechaD)) return false;
+                if (fechaH) {
+                    const end = new Date(fechaH);
+                    end.setHours(23, 59, 59, 999);
+                    if (dateToCheck > end) return false;
+                }
+            }
+
+            // Económico
+            if (expedienteFilters.saldoDesde !== undefined && (c.economicData?.totalAmount || 0) < expedienteFilters.saldoDesde) return false;
+            if (expedienteFilters.saldoHasta !== undefined && (c.economicData?.totalAmount || 0) > expedienteFilters.saldoHasta) return false;
+            if (expedienteFilters.saldoNoZero && (c.economicData?.totalAmount || 0) === 0) return false;
+            if (expedienteFilters.saldoPositivo && (c.economicData?.totalAmount || 0) <= 0) return false;
+            if (expedienteFilters.saldoNegativo && (c.economicData?.totalAmount || 0) >= 0) return false;
+
+            // Texto libre
+            if (expedienteFilters.textoObservaciones) {
+                const q = expedienteFilters.textoObservaciones.toLowerCase();
+                const obs = (c.description || (c as any).observations || '').toLowerCase();
+                if (!obs.includes(q)) return false;
+            }
+
+            return true;
         });
 
         if (sortConfig) {
             filtered.sort((a, b) => {
-                let aValue: any = '';
-                let bValue: any = '';
+                let aValue: any;
+                let bValue: any;
 
                 switch (sortConfig.key) {
-                    case 'type':
-                        aValue = a.fileConfig.category || '';
-                        bValue = b.fileConfig.category || '';
+                    case 'fileNumber': {
+                        const [aPref, aNum] = a.fileNumber.split('-');
+                        const [bPref, bNum] = b.fileNumber.split('-');
+                        if (aPref !== bPref) {
+                            aValue = aPref;
+                            bValue = bPref;
+                        } else {
+                            aValue = parseInt(aNum, 10) || 0;
+                            bValue = parseInt(bNum, 10) || 0;
+                        }
+                        break;
+                    }
+                    case 'responsible':
+                        aValue = users.find(u => u.id === a.fileConfig?.responsibleUserId)?.name || '';
+                        bValue = users.find(u => u.id === b.fileConfig?.responsibleUserId)?.name || '';
                         break;
                     case 'createdAt':
-                        aValue = new Date(a.createdAt).getTime();
-                        bValue = new Date(b.createdAt).getTime();
-                        break;
                     case 'closedAt':
-                        aValue = a.closedAt ? new Date(a.closedAt).getTime() : 0;
-                        bValue = b.closedAt ? new Date(b.closedAt).getTime() : 0;
+                        aValue = a[sortConfig.key] ? new Date(a[sortConfig.key]!).getTime() : 0;
+                        bValue = b[sortConfig.key] ? new Date(b[sortConfig.key]!).getTime() : 0;
+                        break;
+                    case 'totalAmount':
+                        aValue = a.economicData?.totalAmount || 0;
+                        bValue = b.economicData?.totalAmount || 0;
                         break;
                     default:
-                        aValue = a[sortConfig.key as keyof CaseRecord] || '';
-                        bValue = b[sortConfig.key as keyof CaseRecord] || '';
+                        aValue = (a as any)[sortConfig.key] || '';
+                        bValue = (b as any)[sortConfig.key] || '';
                 }
 
                 if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -199,535 +416,1412 @@ const Dashboard: React.FC<DashboardProps> = ({
                 return 0;
             });
         }
-
         return filtered;
-    }, [caseHistory, selectedClientId, searchQuery, identifierFilter, vehicleFilter, statusFilter, categoryFilter, startDate, endDate, dateFilterType, situationFilter, sortConfig]);
+    }, [caseHistory, selectedClientId, selectedClientDocument, searchQuery, expedienteFilters, situationFilter, statusFilter, responsibleFilter, dateFilterType, startDate, endDate, sortConfig, users, prefixes]);
+
+    const selectedTotalSaldo = useMemo(() => {
+        if (selectedCases.length === 0) return 0;
+        return processedCases
+            .filter(c => selectedCases.includes(c.fileNumber))
+            .reduce((sum, c) => sum + (c.economicData?.totalAmount || 0), 0);
+    }, [processedCases, selectedCases]);
+
+    const activeFiltersText = useMemo(() => {
+        const filters: string[] = [];
+        if (selectedClientLabel) filters.push(`Cliente: ${selectedClientLabel}`);
+        if (responsibleLabel) filters.push(`Responsable: ${responsibleLabel}`);
+        if (startDate || endDate) {
+            const label = dateFilterType === 'createdAt' ? 'Apertura' : 'Cierre';
+            filters.push(`${label}: ${startDate || 'ini'} al ${endDate || 'fin'}`);
+        }
+        if (situationFilter !== 'Todos') filters.push(`Situación: ${situationFilter}`);
+        if (statusFilter !== 'Todos') filters.push(`Estado: ${statusFilter}`);
+        if (categoryFilter !== 'Todos') filters.push(`Cat: ${categoryFilter}`);
+        if (prefixFilter) filters.push(`Prefijo: ${prefixFilter}`);
+        if (identifierFilter) filters.push(`ID: ${identifierFilter}`);
+
+        return filters.length > 0 ? filters.join(' | ') : null;
+    }, [selectedClientLabel, responsibleLabel, startDate, endDate, dateFilterType, situationFilter, statusFilter, categoryFilter, prefixFilter, identifierFilter]);
 
     useEffect(() => {
-
-        // Load prefixes for dropdown
         const load = async () => {
-            try {
-                const data = await getPrefixes();
-                setPrefixes(data);
-            } catch (e) {
-                console.error('Error loading prefixes', e);
-            }
+            try { const data = await getPrefixes(); setPrefixes(data); } catch (e) { console.error('Error loading prefixes', e); }
         };
         load();
     }, []);
 
-    const confirmDelete = async () => {
-        if (caseToDelete) {
-            await deleteCase(caseToDelete);
-            setCaseToDelete(null);
-        }
-    };
-
-    const handleBatchDelete = () => {
-        if (selectedCases.length > 0) {
-            setIsBatchDeleteModalOpen(true);
-        }
-    };
-
-    const confirmBatchDelete = async () => {
-        for (const fileNumber of selectedCases) {
-            await deleteCase(fileNumber);
-        }
-        setSelectedCases([]);
-        setIsBatchDeleteModalOpen(false);
-        addToast(`${selectedCases.length} expedientes eliminados correctamente`, 'success');
+    const handleSort = (key: string) => {
+        setSortConfig(prev => {
+            if (prev?.key === key) {
+                if (prev.direction === 'asc') return { key, direction: 'desc' };
+                return null;
+            }
+            return { key, direction: 'asc' };
+        });
     };
 
     const handleClearFilters = () => {
+        setSearchQuery(''); setSelectedClientId(null); setSelectedClientLabel(''); setIdentifierFilter('');
+        setPrefixFilter(''); setResponsibleFilter(''); setResponsibleLabel(''); setStatusFilter('Todos');
+        setCategoryFilter('Todos'); setSituationFilter('Todos');
+        setStartDate(''); setEndDate(''); setCurrentPage(1); setDateFilterType('createdAt');
+    };
+
+    // Calculate active expediente filter count
+    const activeExpedienteFilterCount = useMemo(() => {
+        let count = 0;
+        if (expedienteFilters.numeroExpediente) count++;
+        if (expedienteFilters.prefijoId) count++;
+        if (expedienteFilters.clienteTexto) count++;
+        if (expedienteFilters.identificadorDesde) count++;
+        if (expedienteFilters.identificadorHasta) count++;
+        if (expedienteFilters.situacion) count++;
+        if (expedienteFilters.estado) count++;
+        if (expedienteFilters.responsable) count++;
+        if (expedienteFilters.fechaDesde || expedienteFilters.fechaHasta) count++;
+        if (expedienteFilters.saldoDesde !== undefined || expedienteFilters.saldoHasta !== undefined) count++;
+        if (expedienteFilters.saldoNoZero || expedienteFilters.saldoPositivo || expedienteFilters.saldoNegativo) count++;
+        if (expedienteFilters.textoObservaciones) count++;
+        return count;
+    }, [expedienteFilters]);
+
+    // ✅ Cerrar automáticamente el panel de filtros después de inactividad
+    useEffect(() => {
+        // Solo cerrar si el panel está abierto Y no hay filtros activos
+        if (isExpedienteFilterPanelOpen && activeExpedienteFilterCount === 0) {
+            // Esperar 5 segundos de inactividad antes de cerrar
+            const timer = setTimeout(() => {
+                setIsExpedienteFilterPanelOpen(false);
+            }, 5000);
+
+            return () => clearTimeout(timer);
+        }
+    }, [isExpedienteFilterPanelOpen, activeExpedienteFilterCount]);
+
+    const handleClearExpedienteFilters = () => {
+        setExpedienteFilters({});
+        handleClearFilters();
+        addToast("Filtros limpiados", "info");
+    };
+
+    // Search bar handlers
+    const handleSearchExpand = () => {
+        setIsSearchExpanded(true);
+        setTimeout(() => searchInputRef.current?.focus(), 100);
+    };
+
+    const handleSearchClear = () => {
         setSearchQuery('');
+        setIsSearchExpanded(false);
+        setShowSuggestions(false);
+        setIsRecentsOpen(false);
         setSelectedClientId(null);
         setSelectedClientLabel('');
-        setIdentifierFilter('');
-        setVehicleFilter('');
-        setStatusFilter('Todos');
-        setCategoryFilter('Todos');
-        setSituationFilter('Todos');
-        setStartDate('');
-        setEndDate('');
-        setCurrentPage(1);
     };
 
-    const handleDuplicateCase = async (originalCase: CaseRecord) => {
-        try {
-            // Obtener el prefijo del expediente original (ejemplo: "EXP")
-            const prefix = originalCase.fileNumber.split('-')[0];
-            // Filtrar casos que comparten el mismo prefijo
-            const samePrefixCases = caseHistory.filter(c => c.fileNumber.startsWith(`${prefix}-`));
-            // Ordenar descendente por número
-            const sorted = samePrefixCases.sort((a, b) => b.fileNumber.localeCompare(a.fileNumber));
+    const handleSelectSuggestion = (suggestion: SearchSuggestion) => {
+        setSearchQuery(suggestion.type === 'name' ? suggestion.label : suggestion.document);
+        setSelectedClientLabel(suggestion.label);
+        setSelectedClientId(suggestion.clientId || null);
+        setShowSuggestions(false);
+        setIsRecentsOpen(false);
+        skipOpenSuggestionsOnNextFocusRef.current = true;
+        const updated = pushRecentClientIdentifier(currentUser?.id, suggestion.document, suggestion.label);
+        setRecentIdentifiers(updated.map(entry => ({
+            ...entry,
+            displayName: entry.displayName || getDisplayNameForIdentifier(entry.identifier)
+        })));
+        setTimeout(() => searchInputRef.current?.focus(), 50);
+    };
 
-            // Generar el siguiente número ordinal para ese prefijo
-            let newFileNumber = `${prefix}-0001`;
-            if (sorted.length > 0) {
-                const lastNumber = sorted[0].fileNumber;
-                const match = lastNumber.match(/-\d+$/);
-                if (match) {
-                    const nextNum = parseInt(match[0].substring(1)) + 1;
-                    newFileNumber = `${prefix}-${String(nextNum).padStart(4, '0')}`;
+    const handleSelectRecentIdentifier = (identifier: string) => {
+        const normalized = normalizeRecentClientIdentifier(identifier);
+        if (!normalized) return;
+
+        const clientMatch = savedClients.find(client =>
+            normalizeRecentClientIdentifier(client.documento) === normalized ||
+            normalizeRecentClientIdentifier(client.nif) === normalized
+        );
+
+        const name = clientMatch?.nombre || clientMatch?.legalName || getDisplayNameForIdentifier(identifier);
+        setSearchQuery(identifier);
+        setSelectedClientLabel(name);
+        setSelectedClientId(clientMatch?.id || null);
+        setShowSuggestions(false);
+        setIsRecentsOpen(false);
+        const updated = pushRecentClientIdentifier(currentUser?.id, identifier, name);
+        setRecentIdentifiers(updated.map(entry => ({
+            ...entry,
+            displayName: entry.displayName || getDisplayNameForIdentifier(entry.identifier)
+        })));
+        skipOpenSuggestionsOnNextFocusRef.current = true;
+        setTimeout(() => searchInputRef.current?.focus(), 50);
+    };
+
+    // Keyboard shortcuts
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Ctrl+K or Ctrl+F to open search
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'f')) {
+                e.preventDefault();
+                handleSearchExpand();
+            }
+            // Esc to close suggestions or search
+            if (e.key === 'Escape') {
+                if (showSuggestions) {
+                    setShowSuggestions(false);
+                } else if (isRecentsOpen) {
+                    setIsRecentsOpen(false);
+                } else if (!searchQuery) {
+                    setIsSearchExpanded(false);
                 }
             }
-
-            // Crear copia del expediente con el nuevo número
-            const duplicatedCase: CaseRecord = {
-                ...originalCase,
-                fileNumber: newFileNumber,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                status: 'Iniciado',
-                situation: 'Iniciado',
-                tasks: originalCase.tasks.map(t => ({
-                    ...t,
-                    id: crypto.randomUUID(), // Generate new ID for the task
-                    createdAt: new Date().toISOString() // Reset creation date for the new task
-                })),
-                communications: originalCase.communications.map(c => ({
-                    ...c,
-                    id: crypto.randomUUID(), // Generate new ID for the communication
-                    date: new Date().toISOString() // Reset date for the new communication
-                })),
-                attachments: [],
-                economicData: {
-                    lines: originalCase.economicData.lines.map(line => ({ ...line })),
-                    subtotalAmount: originalCase.economicData.subtotalAmount,
-                    vatAmount: originalCase.economicData.vatAmount,
-                    totalAmount: originalCase.economicData.totalAmount,
-                },
-            };
-
-            // Guardar el nuevo expediente y abrir su pantalla de mantenimiento
-            await saveCase(duplicatedCase);
-            // Navegar a la vista de detalle del nuevo expediente
-            onSelectCase(newFileNumber);
-        } catch (error) {
-            console.error('Error duplicando expediente:', error);
-        }
-    };
-
-    const handleCaseClick = (c: CaseRecord) => {
-        if (c.status === 'Cerrado') {
-            addToast('El expediente está cerrado. Debe reabrirlo para poder modificarlo.', 'warning');
-            return;
-        }
-        // Fix: Pass fileNumber string instead of the whole object, as App.tsx expects string
-        onSelectCase(c.fileNumber);
-    };
-
-    const handleToggleCase = (fileNumber: string) => {
-        setSelectedCases(prev =>
-            prev.includes(fileNumber)
-                ? prev.filter(id => id !== fileNumber)
-                : [...prev, fileNumber]
-        );
-    };
-
-    const handleSelectAll = () => {
-        const pageIds = paginatedCases.map(c => c.fileNumber);
-        const allSelected = pageIds.every(id => selectedCases.includes(id));
-
-        if (allSelected) {
-            // Deselect all on this page
-            setSelectedCases(prev => prev.filter(id => !pageIds.includes(id)));
-        } else {
-            // Select all on this page
-            setSelectedCases(prev => {
-                const newSelection = [...prev];
-                pageIds.forEach(id => {
-                    if (!newSelection.includes(id)) {
-                        newSelection.push(id);
-                    }
-                });
-                return newSelection;
-            });
-        }
-    };
-
-    const handleBatchClose = () => {
-        if (selectedCases.length > 0) setIsBatchCloseModalOpen(true);
-    };
-
-    const confirmBatchClose = async () => {
-        if (selectedCases.length === 0) return;
-        const now = new Date();
-        const casesToUpdate = caseHistory.filter(c => selectedCases.includes(c.fileNumber));
-        const updatedCases = casesToUpdate.map(c => ({
-            ...c,
-            status: 'Cerrado',
-            situation: 'Cerrado',
-            closedAt: now.toISOString()
-        }));
-        await saveMultipleCases(updatedCases);
-        setSelectedCases([]);
-        setIsBatchCloseModalOpen(false);
-        addToast(`${casesToUpdate.length} expedientes cerrados correctamente con fecha ${now.toLocaleDateString()}`, 'success');
-    };
-
-    const handleSingleClose = async () => {
-        if (!caseToClose) return;
-        const now = new Date();
-        const updatedCase = {
-            ...caseToClose,
-            status: 'Cerrado',
-            situation: 'Cerrado',
-            closedAt: now.toISOString()
         };
-        await saveMultipleCases([updatedCase]);
-        setCaseToClose(null);
-        addToast(`Expediente ${caseToClose.fileNumber} cerrado correctamente con fecha ${now.toLocaleDateString()}`, 'success');
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [searchQuery, showSuggestions, isRecentsOpen]);
+
+    // Responsive search bar - auto-expand on large screens
+    useEffect(() => {
+        const handleResize = () => {
+            const width = window.innerWidth;
+            // Auto-expand on large screens (≥1200px)
+            if (width >= 1200) {
+                setIsSearchExpanded(true);
+            }
+            // Auto-collapse on small screens (<768px) if no search query
+            else if (width < 768 && !searchQuery) {
+                setIsSearchExpanded(false);
+            }
+        };
+
+        // Set initial state
+        handleResize();
+
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, [searchQuery]);
+
+    // Close menu on scroll or click outside
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                setOpenMenuId(null);
+                setMenuPos(null);
+            }
+            if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node)) {
+                setShowSuggestions(false);
+            }
+            if (recentsRef.current && !recentsRef.current.contains(e.target as Node)) {
+                setIsRecentsOpen(false);
+            }
+        };
+
+        const handleScroll = () => { setOpenMenuId(null); setMenuPos(null); };
+
+        window.addEventListener('scroll', handleScroll, { capture: true });
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            window.removeEventListener('scroll', handleScroll, { capture: true });
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
+
+    const handleSearchCollapse = () => {
+        // Delay to allow clicking on suggestions
+        setTimeout(() => {
+            if (!searchQuery) {
+                setIsSearchExpanded(false);
+            }
+        }, 300);
+    };
+
+    const stopResizing = useCallback(() => {
+        _setIsResizing(false);
+    }, []);
+
+    const resize = useCallback((e: MouseEvent) => {
+        if (_isResizing) {
+            const newWidth = e.clientX;
+            if (newWidth > 240 && newWidth < 600) {
+                _setSidebarWidth(newWidth);
+            }
+        }
+    }, [_isResizing]);
+
+    useEffect(() => {
+        window.addEventListener('mousemove', resize);
+        window.addEventListener('mouseup', stopResizing);
+        return () => {
+            window.removeEventListener('mousemove', resize);
+            window.removeEventListener('mouseup', stopResizing);
+        };
+    }, [resize, stopResizing]);
+
+    const handleBatchDelete = () => { if (selectedCases.length > 0) setIsBatchDeleteModalOpen(true); };
+
+    const confirmBatchDelete = async () => {
+        const casesToUpdate = caseHistory.filter(c => selectedCases.includes(c.fileNumber)).map(c => ({
+            ...c,
+            status: 'Eliminado' as CaseStatus,
+            situation: 'Almacén',
+            updatedAt: new Date().toISOString()
+        }));
+        await saveMultipleCases(casesToUpdate);
+        setSelectedCases([]);
+        setIsBatchDeleteModalOpen(false);
+        addToast(`${casesToUpdate.length} expedientes movidos al Almacén correctamente`, 'warning');
+    };
+
+    const handleBatchClose = () => { if (selectedCases.length > 0) setIsBatchCloseModalOpen(true); };
+    const confirmBatchClose = async (options: { createAlbaran: boolean; createProforma: boolean }) => {
+        const now = new Date();
+        const casesToUpdate = caseHistory.filter(c => selectedCases.includes(c.fileNumber)).map(c => ({
+            ...c, status: 'Cerrado' as CaseStatus, situation: 'Cerrado', closedAt: now.toISOString()
+        }));
+
+        try {
+            // Build toast message based on selected options
+            const actions: string[] = [];
+            if (options.createAlbaran) actions.push('albaranes');
+            if (options.createProforma) actions.push('proformas');
+            const actionText = actions.length > 0 ? ` y generando ${actions.join(' y ')}` : '';
+
+            addToast(`Cerrando expedientes${actionText}...`, 'info');
+            console.log(`[Dashboard] Starting batch close for ${casesToUpdate.length} cases.`);
+            console.log(`[Dashboard] Options: Albarán=${options.createAlbaran}, Proforma=${options.createProforma}`);
+
+            // Execute in parallel but with individual error handling or logging
+            await Promise.all(casesToUpdate.map(async (c) => {
+                // Order: First Albarán, then Proforma
+
+                // 1. Create Delivery Note (Albarán) if selected
+                if (options.createAlbaran) {
+                    console.log(`[Dashboard] Auto-creating delivery note for case: ${c.fileNumber}`);
+                    try {
+                        const success = await createDeliveryNoteFromCase({
+                            client: c.client,
+                            clientSnapshot: c.clientSnapshot,
+                            fileNumber: c.fileNumber,
+                            economicData: c.economicData
+                        });
+                        if (success) {
+                            console.log(`[Dashboard] Delivery note created for ${c.fileNumber}`);
+                        } else {
+                            console.warn(`[Dashboard] Delivery note creation returned false for ${c.fileNumber} (likely duplicate or empty)`);
+                        }
+                    } catch (err) {
+                        console.error(`[Dashboard] Failed to create delivery note for ${c.fileNumber}`, err);
+                    }
+                }
+
+                // 2. Create Proforma if selected
+                if (options.createProforma) {
+                    console.log(`[Dashboard] Auto-creating proforma for case: ${c.fileNumber}`);
+                    try {
+                        const success = await createProformaFromCase({
+                            client: c.client,
+                            clientSnapshot: c.clientSnapshot,
+                            fileNumber: c.fileNumber,
+                            economicData: c.economicData
+                        });
+                        if (success) {
+                            console.log(`[Dashboard] Proforma created for ${c.fileNumber}`);
+                        } else {
+                            console.warn(`[Dashboard] Proforma creation returned false for ${c.fileNumber} (likely duplicate or empty)`);
+                        }
+                    } catch (err) {
+                        console.error(`[Dashboard] Failed to create proforma for ${c.fileNumber}`, err);
+                    }
+                }
+            }));
+
+            await saveMultipleCases(casesToUpdate);
+            setSelectedCases([]);
+            setIsBatchCloseModalOpen(false);
+            addToast(`${casesToUpdate.length} expedientes cerrados correctamente`, 'success');
+        } catch (error) {
+            console.error('[Dashboard] Error in batch close:', error);
+            addToast('Error al cerrar expedientes. Consulta la consola.', 'error');
+        }
     };
 
     const handleBatchReopen = async () => {
-        if (selectedCases.length === 0) return;
-        const casesToUpdate = caseHistory.filter(c => selectedCases.includes(c.fileNumber));
-        const updatedCases = casesToUpdate.map(c => ({
-            ...c,
-            status: 'Iniciado', // Or 'Abierto' if that's a valid status, defaulting to 'Iniciado' based on prompt
-            situation: 'Iniciado',
-            closedAt: undefined
+        const casesToUpdate = caseHistory.filter(c => selectedCases.includes(c.fileNumber)).map(c => ({
+            ...c, status: 'Iniciado' as CaseStatus, situation: 'Iniciado', closedAt: undefined
         }));
-        await saveMultipleCases(updatedCases);
+        await saveMultipleCases(casesToUpdate);
+        setSelectedCases([]);
+        addToast(`${casesToUpdate.length} expedientes reabiertos`, 'success');
+    };
+
+    const handleBatchDuplicate = async (ids?: string[]) => {
+        const targetIds = ids || selectedCases;
+        if (targetIds.length === 0) return;
+
+        if (targetIds.length === 1) {
+            // New UX: Navigate to /detail/new with duplication context
+            // navigateTo(`/detail/new?duplicateOf=${targetIds[0]}`); // Assuming navigateTo is available
+            addToast("Duplicación de un solo expediente no implementada aún para navegación.", "info");
+        } else {
+            // Batch legacy logic...
+            const casesToDuplicate = caseHistory.filter(c => targetIds.includes(c.fileNumber));
+            const duplicatedCases = casesToDuplicate.map(c => {
+                const newFileNumber = `${c.fileNumber}-DUP-${Date.now().toString().slice(-4)}`;
+                return {
+                    ...c,
+                    fileNumber: newFileNumber,
+                    status: 'Iniciado' as CaseStatus,
+                    situation: 'Iniciado',
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    attachments: [],
+                    tasks: [],
+                    communications: []
+                };
+            });
+            await saveMultipleCases(duplicatedCases);
+            addToast(`${duplicatedCases.length} expedientes duplicados`, 'success');
+            setSelectedCases([]);
+        }
+    };
+
+    const handlePrint = () => {
+        window.print();
+    };
+
+    const handleBatchMaintain = async () => {
+        if (selectedCases.length === 0) return;
+        const casesToUpdate = caseHistory.filter(c => selectedCases.includes(c.fileNumber)).map(c => ({
+            ...c,
+            situation: 'En Mantenimiento', // Or any logic for "Mantener"
+            updatedAt: new Date().toISOString()
+        }));
+        await saveMultipleCases(casesToUpdate);
+        addToast(`${casesToUpdate.length} expedientes marcados para mantenimiento`, 'success');
         setSelectedCases([]);
     };
 
-    // Pagination calculations
+
+    const handleCaseClick = (c: CaseRecord) => {
+        handleToggleSelection(c.fileNumber);
+    };
+
+    const inferClientIdForNewCase = () => {
+        if (selectedClientId) return selectedClientId;
+
+        const normalizedQuery = normalizeIdentifier(searchQuery);
+        if (!normalizedQuery) return undefined;
+
+        const matchingClients = savedClients.filter(client => {
+            const normalizedClientIdentifier = normalizeIdentifier(client.documento || client.nif || '');
+            return normalizedClientIdentifier === normalizedQuery;
+        });
+
+        if (matchingClients.length === 1) {
+            return matchingClients[0].id;
+        }
+
+        return undefined;
+    };
+
+    const buildBaseReturnContext = (): DashboardReturnContext => ({
+        sourceView: 'dashboard',
+        timestamp: Date.now(),
+        searchQuery,
+        identifierFilter,
+        prefixFilter,
+        responsibleFilter,
+        responsibleLabel,
+        statusFilter,
+        categoryFilter,
+        situationFilter,
+        dateFilterType,
+        startDate,
+        endDate,
+        currentPage,
+        pageSize,
+        sortConfig,
+        expedienteFilters,
+        isExpedienteFilterPanelOpen,
+        isSearchExpanded
+    });
+
+    const persistReturnContextForNewCase = () => {
+        const inferredClientId = inferClientIdForNewCase();
+
+        const inferredClient = inferredClientId
+            ? savedClients.find(c => c.id === inferredClientId)
+            : undefined;
+
+        const clientId = selectedClientId || inferredClientId || undefined;
+        const clientLabel = selectedClientLabel || inferredClient?.nombre || undefined;
+        const identifier = searchQuery || inferredClient?.documento || inferredClient?.nif || undefined;
+
+        saveDashboardReturnContext({
+            ...buildBaseReturnContext(),
+            clientId,
+            clientLabel,
+            identifier
+        });
+    };
+
+    const persistReturnContext = (caseRecord?: CaseRecord) => {
+        const clientIdFromCase =
+            caseRecord?.clienteId ||
+            caseRecord?.client?.id ||
+            undefined;
+        const identifierFromCase =
+            caseRecord?.clientSnapshot?.documento ||
+            caseRecord?.client?.nif ||
+            undefined;
+
+        const fallbackLabel =
+            caseRecord?.clientSnapshot?.nombre ||
+            `${caseRecord?.client?.firstName || ''} ${caseRecord?.client?.surnames || ''}`.trim() ||
+            undefined;
+
+        saveDashboardReturnContext({
+            ...buildBaseReturnContext(),
+            clientId: selectedClientId || clientIdFromCase,
+            clientLabel: selectedClientLabel || fallbackLabel,
+            identifier: searchQuery || identifierFromCase
+        });
+    };
+
+    const handleCaseDoubleClick = (c: CaseRecord) => {
+        persistReturnContext(c);
+        onSelectCase(c.fileNumber);
+    };
+
+    const handleToggleSelection = (id: string) => {
+        setSelectedCases(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
+
+    const handleResetColumns = () => {
+        localStorage.removeItem('case-table-col-widths');
+        window.location.reload(); // Refresh to reload defaults from ResizableExplorerTable
+    };
+
+    // Final data to display
     const totalItems = processedCases.length;
-    const totalPages = Math.ceil(totalItems / pageSize);
-    const startIndex = (currentPage - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
+    const isAll = pageSize === 'all';
+    const totalPages = isAll ? 1 : Math.ceil(totalItems / (pageSize as number));
+
+    const startIndex = isAll ? 0 : (currentPage - 1) * (pageSize as number);
+    const endIndex = isAll ? totalItems : startIndex + (pageSize as number);
     const paginatedCases = processedCases.slice(startIndex, endIndex);
 
-    // Reset to page 1 when filters change
+    const totalPagesValue = isAll ? 1 : Math.max(1, totalPages);
+
+    // If current page is greater than total pages after filtering, reset to 1
     useEffect(() => {
-        setCurrentPage(1);
-        setSelectedCases([]); // Clear selection on filter change
-    }, [selectedClientId, searchQuery, identifierFilter, vehicleFilter, statusFilter, categoryFilter, startDate, endDate, situationFilter]);
+        if (currentPage > totalPagesValue && totalPagesValue > 0) {
+            setCurrentPage(1);
+        }
+    }, [totalPagesValue, currentPage]);
 
     return (
-        <div className="p-6 space-y-6">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <h1 className="text-2xl font-bold">Explorador de Expedientes</h1>
-                    <div className="flex space-x-2">
-                        <button
-                            onClick={() => setIsNewCaseModalOpen(true)}
-                            className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-lg font-bold shadow-sm transition-colors"
-                        >
-                            + Nuevo Expediente
-                        </button>
-                        <button
-                            onClick={onShowResponsibleDashboard}
-                            className="text-sm bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full hover:bg-indigo-200 transition-colors font-medium"
-                        >
-                            Panel Responsable
-                        </button>
-                        <button
-                            onClick={() => setIsReportsModuleOpen(true)}
-                            className="text-sm bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full hover:bg-emerald-200 transition-colors font-medium flex items-center gap-1"
-                        >
-                            <FileText className="w-4 h-4" /> Informes
-                        </button>
-                        <button
-                            onClick={() => window.location.hash = '/clients'}
-                            className="text-sm bg-purple-100 text-purple-700 px-3 py-1 rounded-full hover:bg-purple-200 transition-colors font-medium flex items-center gap-1"
-                        >
-                            <Users className="w-4 h-4" /> Clientes
-                        </button>
-                    </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                    <button
-                        onClick={() => setViewMode('list')}
-                        className={`p-2 rounded transition-colors ${viewMode === 'list' ? 'bg-sky-100 text-sky-700' : 'text-slate-600 hover:bg-slate-100'
-                            }`}
-                        title="Vista Lista"
-                    >
-                        <ListViewIcon />
-                    </button>
-                    <button
-                        onClick={() => setViewMode('grid')}
-                        className={`p-2 rounded transition-colors ${viewMode === 'grid' ? 'bg-sky-100 text-sky-700' : 'text-slate-600 hover:bg-slate-100'
-                            }`}
-                        title="Vista Cuadrícula"
-                    >
-                        <GridViewIcon />
-                    </button>
-                    <button
-                        onClick={() => setViewMode('kanban')}
-                        className={`p-2 rounded transition-colors ${viewMode === 'kanban' ? 'bg-sky-100 text-sky-700' : 'text-slate-600 hover:bg-slate-100'
-                            }`}
-                        title="Vista Kanban"
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-                        </svg>
-                    </button>
-                </div>
-            </div>
-
-            {/* Filter Panel */}
-            <FilterPanel
-                searchQuery={searchQuery}
-                setSearchQuery={setSearchQuery}
-                selectedClientId={selectedClientId}
-                setSelectedClientId={setSelectedClientId}
-                selectedClientLabel={selectedClientLabel}
-                setSelectedClientLabel={setSelectedClientLabel}
-                identifierFilter={identifierFilter}
-                setIdentifierFilter={setIdentifierFilter}
-                vehicleFilter={vehicleFilter}
-                setVehicleFilter={setVehicleFilter}
-                statusFilter={statusFilter}
-                setStatusFilter={setStatusFilter}
-                categoryFilter={categoryFilter}
-                setCategoryFilter={setCategoryFilter}
-                situationFilter={situationFilter}
-                setSituationFilter={setSituationFilter}
-                dateFilterType={dateFilterType}
-                setDateFilterType={setDateFilterType}
-                startDate={startDate}
-                setStartDate={setStartDate}
-                endDate={endDate}
-                setEndDate={setEndDate}
-                prefixes={prefixes}
-                caseStatuses={Array.from(new Set([...(appSettings?.caseStatuses || []), 'Iniciado', 'Cerrado']))}
-                onClearFilters={handleClearFilters}
-            />
-
-            {/* Batch Actions - Moved below filters for visibility */}
-            {/* Batch Actions - Always visible */}
-            <div className={`border p-3 rounded-lg flex items-center justify-between mb-4 transition-colors ${selectedCases.length > 0 ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-slate-200'}`}>
-                <div className={`flex items-center gap-2 text-sm ${selectedCases.length > 0 ? 'text-blue-800' : 'text-slate-500'}`}>
-                    <span className="font-bold">{selectedCases.length}</span> seleccionados
-                </div>
-                <div className="flex gap-2">
-                    <button
-                        onClick={() => {
-                            const caseToDuplicate = caseHistory.find(c => c.fileNumber === selectedCases[0]);
-                            if (caseToDuplicate) handleDuplicateCase(caseToDuplicate);
-                        }}
-                        disabled={selectedCases.length !== 1}
-                        className={`px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors flex items-center gap-1 ${selectedCases.length !== 1
-                            ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
-                            : 'bg-white text-blue-700 border border-blue-300 hover:bg-blue-50'
-                            }`}
-                    >
-                        <Copy className="w-4 h-4" /> Duplicar
-                    </button>
-                    <button
-                        onClick={handleBatchReopen}
-                        disabled={selectedCases.length === 0}
-                        className={`px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors flex items-center gap-1 ${selectedCases.length === 0
-                            ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
-                            : 'bg-white text-green-700 border border-green-300 hover:bg-green-50'
-                            }`}
-                    >
-                        <RotateCcw className="w-4 h-4" /> Reabrir
-                    </button>
-                    <button
-                        onClick={handleBatchClose}
-                        disabled={selectedCases.length === 0}
-                        className={`px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors flex items-center gap-1 ${selectedCases.length === 0
-                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                            : 'bg-orange-600 text-white hover:bg-orange-700'
-                            }`}
-                    >
-                        <Lock className="w-4 h-4" /> Cerrar
-                    </button>
-                    <button
-                        onClick={() => {
-                            if (selectedCases.length === 1) {
-                                const caseToEdit = caseHistory.find(c => c.fileNumber === selectedCases[0]);
-                                if (caseToEdit) onSelectCase(caseToEdit.fileNumber);
-                            }
-                        }}
-                        disabled={selectedCases.length !== 1}
-                        className={`px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors flex items-center gap-1 ${selectedCases.length !== 1
-                            ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
-                            : 'bg-white text-indigo-700 border border-indigo-300 hover:bg-indigo-50'
-                            }`}
-                    >
-                        <FileText className="w-4 h-4" /> Mantener
-                    </button>
-                    <button
-                        onClick={handleBatchDelete}
-                        disabled={selectedCases.length === 0}
-                        className={`px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors flex items-center gap-1 ${selectedCases.length === 0
-                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                            : 'bg-red-600 text-white hover:bg-red-700'
-                            }`}
-                    >
-                        <Trash2 className="w-4 h-4" /> Eliminar
-                    </button>
-                </div>
-            </div>
-
-
-            {viewMode === 'kanban' ? (
-                <KanbanView
-                    cases={processedCases}
-                    onUpdateCase={async (updatedCase) => {
-                        await saveCase(updatedCase);
-                        addToast(`Expediente ${updatedCase.fileNumber} actualizado a ${updatedCase.status}`, 'success');
-                    }}
-                    onSelectCase={onSelectCase}
-                    onClose={() => setViewMode('list')}
+        <>
+            <div className={`flex flex-1 overflow-hidden bg-white ${caseToPrint ? 'is-printing-single' : ''}`}>
+                {/* New Expediente Filter Panel (LEFT SIDE, PUSH CONTENT) */}
+                <ExpedienteFilterPanel
+                    filters={expedienteFilters}
+                    onFiltersChange={setExpedienteFilters}
+                    onClose={() => setIsExpedienteFilterPanelOpen(false)}
+                    isOpen={isExpedienteFilterPanelOpen}
+                    prefixes={prefixes}
+                    estados={Array.from(new Set([...(appSettings?.caseStatuses || []), 'Iniciado', 'Cerrado']))}
+                    responsables={users.map(u => ({ id: u.id, name: u.name }))}
                 />
-            ) : viewMode === 'grid' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {paginatedCases.map((c) => (
-                        <ExpedienteCard
-                            key={c.fileNumber}
-                            caseRecord={c}
-                            onSelectCase={handleCaseClick}
-                            onDelete={() => setCaseToDelete(c.fileNumber)}
-                            onDuplicate={handleDuplicateCase}
+
+
+                {/* Main Area */}
+                <div className="flex-1 flex flex-col min-w-0 overflow-y-auto no-scrollbar print-area relative">
+                    <div className="flex flex-col gap-6 p-10 print:hidden">
+                        {/* Report Header for Print Selection (Visible only in print) */}
+                        <div className="hidden print:block mb-8 border-b-2 border-slate-900 pb-4">
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <h2 className="text-xl font-normal text-slate-900 uppercase">Gestor de Expedientes Pro</h2>
+                                    <p className="text-[10px] text-slate-400 font-normal uppercase tracking-widest mt-1">
+                                        Reporte de Expedientes Seleccionados ({selectedCases.length > 0 ? selectedCases.length : processedCases.length})
+                                    </p>
+                                </div>
+                                <div className="text-right text-[10px] text-slate-400 font-normal leading-tight uppercase">
+                                    <p>Generado el: {new Date().toLocaleDateString('es-ES')} a las {new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</p>
+                                    <p>Responsable: {currentUser?.name || 'Administrador'}</p>
+                                </div>
+                            </div>
+                        </div>
+
+
+                        {/* Header Action Area */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 no-print">
+                            <div className="flex items-center gap-6">
+                                <div className="app-tab app-tab-active cursor-default !py-1 !px-0 !h-auto">
+                                    Expedientes
+                                </div>
+
+                                {/* Breadcrumbs */}
+                                <Breadcrumbs
+                                    items={[]}
+                                    className="hidden lg:flex"
+                                />
+
+                                <BackToHubButton />
+
+                                {/* Botón Volver a Clientes - Solo visible cuando se filtra por cliente */}
+                                {selectedClientId && (
+                                    <button
+                                        onClick={() => {
+                                            setSelectedClientId(null);
+                                            setSelectedClientLabel('');
+                                            navigateToModule('/clients');
+                                        }}
+                                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200 hover:border-slate-300 transition-all shadow-sm hover:shadow-md active:scale-95 group"
+                                        title="Volver al explorador de clientes"
+                                    >
+                                        <svg className="w-4 h-4 text-slate-600 group-hover:text-slate-700 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                                        </svg>
+                                        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                                            Volver a Clientes
+                                        </span>
+                                    </button>
+                                )}
+
+                                {/* Filtros button */}
+                                <button
+                                    onClick={() => setIsExpedienteFilterPanelOpen(!isExpedienteFilterPanelOpen)}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all shadow-sm hover:shadow-md active:scale-95 group relative ${isExpedienteFilterPanelOpen
+                                        ? 'bg-sky-500 border-sky-600 text-white'
+                                        : 'bg-gradient-to-r from-sky-50 to-indigo-50 border-sky-200 hover:border-sky-300'
+                                        }`}
+                                    title="Abrir panel de filtros"
+                                >
+                                    <Filter className={`w-4 h-4 transition-colors ${isExpedienteFilterPanelOpen
+                                        ? 'text-white'
+                                        : 'text-sky-600 group-hover:text-sky-700'
+                                        }`} />
+                                    <span className={`text-xs font-bold uppercase tracking-wider ${isExpedienteFilterPanelOpen
+                                        ? 'text-white'
+                                        : 'text-sky-700'
+                                        }`}>
+                                        Filtros{activeExpedienteFilterCount > 0 ? ` (${activeExpedienteFilterCount})` : ''}
+                                    </span>
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        const initialClientId = inferClientIdForNewCase();
+                                        persistReturnContextForNewCase();
+                                        onCreateNewCase('GE-MAT', initialClientId);
+                                    }}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-50 to-indigo-50 border border-sky-200 hover:border-sky-300 transition-all shadow-sm hover:shadow-md active:scale-95 group"
+                                    title="Crear nuevo expediente"
+                                >
+                                    <Plus className="w-4 h-4 text-sky-600 group-hover:text-sky-700 transition-colors" />
+                                    <span className="text-xs font-bold text-sky-700 uppercase tracking-wider">
+                                        Nuevo Expediente
+                                    </span>
+                                </button>
+
+                                <ColumnSelectorMenu
+                                    title="Columnas"
+                                    options={dashboardColumnOptions}
+                                    visibleIds={visibleColumns}
+                                    onToggle={toggleVisibleColumn}
+                                />
+
+                                {/* Active filter chips */}
+                                {activeExpedienteFilterCount > 0 && (
+                                    <div className="flex items-center gap-2 px-3 py-1 bg-sky-50 border border-sky-100 rounded-full">
+                                        <div className="size-1.5 rounded-full bg-sky-400" />
+                                        <span className="text-[10px] font-normal uppercase tracking-widest text-sky-700">
+                                            {activeExpedienteFilterCount} filtro{activeExpedienteFilterCount > 1 ? 's' : ''} activo{activeExpedienteFilterCount > 1 ? 's' : ''}
+                                        </span>
+                                        <button
+                                            onClick={handleClearExpedienteFilters}
+                                            className="text-sky-400 hover:text-sky-600 transition-colors ml-1"
+                                            title="Limpiar filtros"
+                                        >
+                                            <X size={10} strokeWidth={3} />
+                                        </button>
+                                    </div>
+                                )}
+
+                            </div>
+                        </div>
+
+
+                        {/* NEW ACTION BAR with Collapsible Search */}
+                        <div className="flex items-center justify-between bg-white border border-[#cfdbe7] rounded-xl px-4 py-3 shadow-sm mb-2 no-print gap-4">
+                            {/* Left side - Collapsible Search Bar */}
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                                {/* Search - Collapsible */}
+                                <div className={`flex items-center gap-2 transition-all duration-300 ${isSearchExpanded ? 'flex-1' : 'flex-shrink-0'
+                                    }`}>
+                                    {!isSearchExpanded ? (
+                                        // Collapsed state - Just icon button
+                                        <button
+                                            onClick={handleSearchExpand}
+                                            className="flex items-center gap-2 px-3 py-2 text-slate-500 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-all"
+                                            title="Buscar (Ctrl+K)"
+                                        >
+                                            <Search className="w-4 h-4" />
+                                            <span className="text-xs font-medium hidden lg:inline">Buscar</span>
+                                        </button>
+                                    ) : (
+                                        // Expanded state - Full search input
+                                        <div className="flex flex-1 min-w-0 items-center gap-2">
+                                            <div className="relative min-w-0 flex-[1.2]">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                                                <input
+                                                    ref={searchInputRef}
+                                                    type="text"
+                                                    value={searchQuery}
+                                                    onChange={(e) => {
+                                                        setSearchQuery(e.target.value);
+                                                        setSelectedClientId(null);
+                                                        setSelectedClientLabel('');
+                                                        setShowSuggestions(true);
+                                                        setIsRecentsOpen(false);
+                                                    }}
+                                                    onFocus={() => {
+                                                        if (skipOpenSuggestionsOnNextFocusRef.current) {
+                                                            skipOpenSuggestionsOnNextFocusRef.current = false;
+                                                            return;
+                                                        }
+                                                        setShowSuggestions(true);
+                                                    }}
+                                                    onBlur={handleSearchCollapse}
+                                                    placeholder="Identificador (DNI/CIF)"
+                                                    className="w-full pl-10 pr-36 py-2 border border-slate-200 rounded-lg text-sm font-normal text-slate-700 bg-slate-50 shadow-sm focus:bg-white focus:ring-2 focus:ring-sky-500/10 focus:border-sky-500 outline-none transition-all placeholder:text-slate-400"
+                                                />
+                                                {searchQuery && (
+                                                    <button
+                                                        onClick={handleSearchClear}
+                                                        className="absolute right-24 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                                                        title="Limpiar búsqueda"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                                <div ref={recentsRef} className="absolute right-2 top-1/2 -translate-y-1/2">
+                                                    <button
+                                                        type="button"
+                                                        onMouseDown={(e) => {
+                                                            e.preventDefault();
+                                                            setIsRecentsOpen(v => !v);
+                                                            setShowSuggestions(false);
+                                                        }}
+                                                        className="h-8 px-2.5 inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 transition-colors"
+                                                        title="Identificadores recientes de esta sesión"
+                                                    >
+                                                        <History className="w-3.5 h-3.5" />
+                                                        <span className="text-[10px] font-semibold uppercase tracking-wider">Recientes</span>
+                                                        <ChevronDown className={`w-3 h-3 transition-transform ${isRecentsOpen ? 'rotate-180' : ''}`} />
+                                                    </button>
+
+                                                    {isRecentsOpen && (
+                                                        <div className="absolute z-[110] right-0 top-[calc(100%+8px)] w-72 rounded-xl border border-slate-200 bg-white shadow-xl overflow-hidden">
+                                                            <div className="px-3 py-2 border-b border-slate-100 text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-50">
+                                                                Ultimos identificadores
+                                                            </div>
+                                                            {recentIdentifiers.length === 0 ? (
+                                                                <div className="px-3 py-3 text-xs text-slate-400">
+                                                                    Sin identificadores en esta sesion.
+                                                                </div>
+                                                            ) : (
+                                                                <div className="max-h-56 overflow-auto">
+                                                                    {recentIdentifiers.map((recent) => (
+                                                                        <button
+                                                                            key={recent.identifier}
+                                                                            type="button"
+                                                                            onMouseDown={(e) => {
+                                                                                e.preventDefault();
+                                                                                handleSelectRecentIdentifier(recent.identifier);
+                                                                            }}
+                                                                            className="w-full text-left px-3 py-2 hover:bg-sky-50 border-b border-slate-50 last:border-0"
+                                                                        >
+                                                                            <div className="flex items-center gap-3">
+                                                                                <span className="text-sm font-semibold text-slate-700">{recent.identifier}</span>
+                                                                                <span className="text-xs text-slate-500 truncate ml-auto">{recent.displayName || '-'}</span>
+                                                                            </div>
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Suggestions Panel */}
+                                                {showSuggestions && suggestions.length > 0 && (
+                                                    <div
+                                                        ref={suggestionsRef}
+                                                        className="absolute z-[100] top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300 ring-4 ring-black/5"
+                                                    >
+                                                        <div className="p-3 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
+                                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Coincidencias encontradas</span>
+                                                            <span className="text-[10px] font-bold text-sky-500 bg-sky-50 px-2 py-0.5 rounded-full uppercase">{suggestions.length} resultados</span>
+                                                        </div>
+                                                        <div className="max-h-80 overflow-y-auto no-scrollbar">
+                                                            {suggestions.map((s, idx) => (
+                                                                <button
+                                                                    key={`${s.type}-${s.document}-${idx}`}
+                                                                    onMouseDown={(e) => {
+                                                                        e.preventDefault();
+                                                                        handleSelectSuggestion(s);
+                                                                    }}
+                                                                    className="w-full text-left px-5 py-3.5 hover:bg-sky-50 transition-all border-b border-slate-50 last:border-0 group flex items-center justify-between"
+                                                                >
+                                                                    <div className="flex flex-col min-w-0">
+                                                                        <span className={cn(
+                                                                            "text-sm font-semibold transition-colors truncate",
+                                                                            s.type === 'name' ? "text-slate-900 group-hover:text-sky-700" : "text-slate-600"
+                                                                        )}>
+                                                                            {s.label}
+                                                                        </span>
+                                                                        <div className="flex items-center gap-2 mt-1">
+                                                                            <span className={cn(
+                                                                                "text-[10px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter",
+                                                                                s.type === 'doc' ? "bg-sky-100 text-sky-700" : "bg-slate-100 text-slate-500"
+                                                                            )}>
+                                                                                {s.document}
+                                                                            </span>
+                                                                            {s.type === 'name' && <span className="text-[10px] text-slate-300 font-bold uppercase italic">Titular</span>}
+                                                                            {s.type === 'doc' && <span className="text-[10px] text-sky-400 font-bold uppercase italic">Identificador</span>}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0 transition-all">
+                                                                        <div className="size-8 rounded-full bg-sky-500 flex items-center justify-center text-white shadow-lg shadow-sky-200">
+                                                                            <ArrowUpRight size={16} strokeWidth={3} />
+                                                                        </div>
+                                                                    </div>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <input
+                                                type="text"
+                                                value={resolvedSelectedClientName}
+                                                readOnly
+                                                placeholder="Nombre del identificador seleccionado"
+                                                className="min-w-0 flex-1 py-2 px-3 border border-slate-200 rounded-lg text-sm font-normal text-slate-700 bg-slate-50 shadow-sm focus:outline-none"
+                                                title={resolvedSelectedClientName || 'Nombre del identificador seleccionado'}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Selection chip - Only show when items are selected */}
+                                {selectedCases.length > 0 && (
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-sky-50 border border-sky-100 rounded-full shrink-0">
+                                        <div className="size-5 rounded-full bg-sky-500 text-white flex items-center justify-center text-[10px] font-bold">
+                                            {selectedCases.length}
+                                        </div>
+                                        <span className="text-[11px] font-medium text-sky-700 whitespace-nowrap">
+                                            Seleccionado{selectedCases.length > 1 ? 's' : ''}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                                <div className="flex items-center bg-slate-50 border border-slate-100 rounded-lg p-1 mr-2 gap-1">
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleBatchDuplicate()}
+                                        disabled={selectedCases.length === 0}
+                                        title={selectedCases.length > 0 ? "Duplicar selección" : "Selecciona expedientes para duplicar"}
+                                        className={cn(selectedCases.length > 0 && "hover:text-[#1380ec] hover:bg-white hover:shadow-sm")}
+                                    >
+                                        <Copy className="size-4" />
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleBatchReopen()}
+                                        disabled={selectedCases.length === 0}
+                                        title={selectedCases.length > 0 ? "Reabrir expedientes" : "Selecciona expedientes para reabrir"}
+                                        className={cn(selectedCases.length > 0 && "hover:text-emerald-600 hover:bg-white hover:shadow-sm")}
+                                    >
+                                        <RotateCcw className="size-4" />
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={handleBatchMaintain}
+                                        disabled={selectedCases.length === 0}
+                                        title={selectedCases.length > 0 ? "Mantener (Mante.)" : "Selecciona expedientes para mantener"}
+                                        className={cn(selectedCases.length > 0 && "hover:text-sky-600 hover:bg-white hover:shadow-sm")}
+                                    >
+                                        <ShieldCheck className="size-4" />
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={handleBatchClose}
+                                        disabled={selectedCases.length === 0}
+                                        title={selectedCases.length > 0 ? "Cerrar expedientes" : "Selecciona expedientes para cerrar"}
+                                        className={cn(selectedCases.length > 0 && "hover:text-amber-600 hover:bg-white hover:shadow-sm")}
+                                    >
+                                        <Lock className="size-4" />
+                                    </Button>
+                                </div>
+
+                                {/* Vista Previa Button (only when exactly 1 selected) */}
+                                <Button
+                                    variant="ghost"
+                                    size="md"
+                                    onClick={() => {
+                                        if (selectedCases.length === 1) {
+                                            const caseToPreview = caseHistory.find(c => c.fileNumber === selectedCases[0]);
+                                            if (caseToPreview) setPreviewCase(caseToPreview);
+                                        }
+                                    }}
+                                    disabled={selectedCases.length !== 1}
+                                    icon={Eye}
+                                    className={cn(selectedCases.length === 1 && "hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-100")}
+                                >
+                                    Vista Previa
+                                </Button>
+
+                                <Button
+                                    variant="ghost"
+                                    size="md"
+                                    onClick={handleResetColumns}
+                                    icon={ArrowUpDown}
+                                    className="hover:text-slate-600 hover:bg-slate-50"
+                                >
+                                    Reset W
+                                </Button>
+
+                                <Button
+                                    variant="ghost"
+                                    size="md"
+                                    onClick={handlePrint}
+                                    icon={Printer}
+                                    className="hover:text-sky-600 hover:bg-sky-50"
+                                >
+                                    Imprimir
+                                </Button>
+
+                                <div className="w-px h-6 bg-slate-200 mx-1" />
+
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={handleBatchDelete}
+                                    disabled={selectedCases.length === 0}
+                                    className={cn(selectedCases.length > 0 && "hover:bg-rose-50 hover:text-rose-600")}
+                                >
+                                    <Trash2 className="size-5" />
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Table View */}
+                        <ResizableExplorerTable
+                            data={paginatedCases}
+                            columns={[
+                                {
+                                    id: 'select',
+                                    label: '',
+                                    minWidth: 40,
+                                    defaultWidth: 44,
+                                    align: 'center',
+                                    sortable: false,
+                                    render: (c) => (
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedCases.includes(c.fileNumber)}
+                                            onChange={() => handleToggleSelection(c.fileNumber)}
+                                            className="h-4 w-4 rounded border-slate-200 border-2 bg-transparent text-[#4c739a] checked:bg-[#4c739a] checked:border-[#4c739a] focus:ring-0 focus:ring-offset-0 focus:border-slate-200 focus:outline-none"
+                                        />
+                                    )
+                                },
+                                {
+                                    id: 'fileNumber',
+                                    label: 'Expediente',
+                                    minWidth: 100,
+                                    defaultWidth: 120,
+                                    render: (c) => <span className="font-mono text-slate-700">{c.fileNumber}</span>
+                                },
+                                ...(visibleColumnsSet.has('identifier') ? [{
+                                    id: 'identifier',
+                                    label: 'Identificador',
+                                    minWidth: 100,
+                                    defaultWidth: 120,
+                                    render: (c: CaseRecord) => <span className="text-slate-700">{c.clientSnapshot?.documento || c.client.nif || '—'}</span>
+                                }] : []),
+                                ...(visibleColumnsSet.has('client') ? [{
+                                    id: 'client',
+                                    label: 'Cliente',
+                                    minWidth: 150,
+                                    defaultWidth: 260,
+                                    render: (c: CaseRecord) => {
+                                        const name = c.clientSnapshot?.nombre || `${c.client.firstName} ${c.client.surnames}` || 'Sin Titular';
+                                        return <span className="text-slate-700" title={name}>{name}</span>;
+                                    }
+                                }] : []),
+                                ...(visibleColumnsSet.has('totalAmount') ? [{
+                                    id: 'totalAmount',
+                                    label: 'Saldo',
+                                    minWidth: 80,
+                                    defaultWidth: 120,
+                                    align: 'right' as const,
+                                    render: (c: CaseRecord) => <span className="text-slate-700">{new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(c.economicData?.totalAmount || 0)}</span>
+                                }] : []),
+                                ...(visibleColumnsSet.has('createdAt') ? [{
+                                    id: 'createdAt',
+                                    label: 'Apertura',
+                                    minWidth: 80,
+                                    defaultWidth: 120,
+                                    align: 'center' as const,
+                                    render: (c: CaseRecord) => <span className="text-slate-500 text-[11px] uppercase tracking-tight">{c.createdAt ? new Date(c.createdAt).toLocaleDateString('es-ES') : '—'}</span>
+                                }] : []),
+                                ...(visibleColumnsSet.has('closedAt') ? [{
+                                    id: 'closedAt',
+                                    label: 'Cierre',
+                                    minWidth: 80,
+                                    defaultWidth: 120,
+                                    align: 'center' as const,
+                                    render: (c: CaseRecord) => <span className="text-slate-500 text-[11px] uppercase tracking-tight">{c.closedAt ? new Date(c.closedAt).toLocaleDateString('es-ES') : '—'}</span>
+                                }] : []),
+                                ...(visibleColumnsSet.has('notes') ? [{
+                                    id: 'notes',
+                                    label: 'Observaciones',
+                                    minWidth: 150,
+                                    defaultWidth: 280,
+                                    render: (c: CaseRecord) => {
+                                        const note = c.description || (c as any).observations || (c as any).notes || '—';
+                                        return <span className="text-slate-500 italic" title={note}>{note}</span>;
+                                    }
+                                }] : []),
+                                ...(visibleColumnsSet.has('quick_view') ? [{
+                                    id: 'quick_view',
+                                    label: '',
+                                    minWidth: 40,
+                                    defaultWidth: 56,
+                                    align: 'center' as const,
+                                    sortable: false,
+                                    render: (c: CaseRecord) => (
+                                        <div className="relative flex justify-center">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setPreviewCase(c);
+                                                }}
+                                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-all"
+                                            >
+                                                <Eye className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    )
+                                }] : []),
+                                ...(visibleColumnsSet.has('responsible') ? [{
+                                    id: 'responsible',
+                                    label: 'Responsable',
+                                    minWidth: 100,
+                                    defaultWidth: 180,
+                                    render: (c: CaseRecord) => {
+                                        const userName = c.fileConfig?.responsibleUserId ? (users.find(u => u.id === c.fileConfig.responsibleUserId)?.name || c.fileConfig.responsibleUserId) : '—';
+                                        return <span className="text-slate-700 text-[11px] uppercase" title={userName}>{userName}</span>;
+                                    }
+                                }] : []),
+                                {
+                                    id: 'actions',
+                                    label: 'Acciones',
+                                    minWidth: 40,
+                                    defaultWidth: 60,
+                                    align: 'center',
+                                    sortable: false,
+                                    render: (c) => (
+                                        <div className="relative flex items-center justify-center">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                    setOpenMenuId(openMenuId === c.fileNumber ? null : c.fileNumber);
+                                                    setMenuPos({
+                                                        top: rect.bottom + window.scrollY,
+                                                        left: rect.left + window.scrollX - 150
+                                                    });
+                                                }}
+                                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-all"
+                                                title="Acciones"
+                                            >
+                                                <MoreHorizontal className="w-4 h-4" />
+                                            </button>
+
+                                            {/* Context Menu */}
+                                            {openMenuId === c.fileNumber && menuPos && (
+                                                <div
+                                                    ref={menuRef}
+                                                    className="fixed bg-white rounded-xl shadow-2xl border border-slate-200 py-2 w-48 z-[9999] animate-in fade-in slide-in-from-top-2 duration-200"
+                                                    style={{
+                                                        top: `${menuPos.top}px`,
+                                                        left: `${menuPos.left}px`
+                                                    }}
+                                                >
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setOpenMenuId(null); setPreviewCase(c); }}
+                                                        className="w-full px-4 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors flex items-center gap-3"
+                                                    >
+                                                        <Eye className="w-4 h-4" />
+                                                        Vista previa
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setOpenMenuId(null);
+                                                            persistReturnContext(c);
+                                                            onSelectCase(c.fileNumber);
+                                                        }}
+                                                        className="w-full px-4 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-sky-50 hover:text-sky-700 transition-colors flex items-center gap-3"
+                                                    >
+                                                        <Edit3 className="w-4 h-4" />
+                                                        Editar
+                                                    </button>
+                                                    <div className="my-1 border-t border-slate-100" />
+                                                    <button
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            setOpenMenuId(null);
+                                                            try {
+                                                                await createDeliveryNoteFromCase({
+                                                                    client: c.client,
+                                                                    clientSnapshot: c.clientSnapshot,
+                                                                    fileNumber: c.fileNumber,
+                                                                    economicData: c.economicData
+                                                                });
+                                                                addToast('Albarán creado correctamente', 'success');
+                                                            } catch (error) {
+                                                                addToast('Error al crear albarán', 'error');
+                                                                console.error(error);
+                                                            }
+                                                        }}
+                                                        className="w-full px-4 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition-colors flex items-center gap-3"
+                                                    >
+                                                        <FileText className="w-4 h-4" />
+                                                        Crear Albarán
+                                                    </button>
+                                                    <button
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            setOpenMenuId(null);
+                                                            try {
+                                                                await createProformaFromCase({
+                                                                    client: c.client,
+                                                                    clientSnapshot: c.clientSnapshot,
+                                                                    fileNumber: c.fileNumber,
+                                                                    economicData: c.economicData
+                                                                });
+                                                                addToast('Proforma creada correctamente', 'success');
+                                                            } catch (error) {
+                                                                addToast('Error al crear proforma', 'error');
+                                                                console.error(error);
+                                                            }
+                                                        }}
+                                                        className="w-full px-4 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-sky-50 hover:text-sky-700 transition-colors flex items-center gap-3"
+                                                    >
+                                                        <Receipt className="w-4 h-4" />
+                                                        Crear Proforma
+                                                    </button>
+                                                    <div className="my-1 border-t border-slate-100" />
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setOpenMenuId(null); setCaseToPrint(c); setTimeout(() => { window.print(); setCaseToPrint(null); }, 100); }}
+                                                        className="w-full px-4 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors flex items-center gap-3"
+                                                    >
+                                                        <Printer className="w-4 h-4" />
+                                                        Imprimir
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setOpenMenuId(null); _setCaseToDelete(c.fileNumber); }}
+                                                        className="w-full px-4 py-2.5 text-left text-sm font-medium text-red-600 hover:bg-red-50 transition-colors flex items-center gap-3"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                        Eliminar
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )
+                                }
+                            ]}
+                            storageKey="case-table-col-widths"
+                            rowIdKey="fileNumber"
+                            selectedRowIds={selectedCases as any}
+                            onRowClick={handleCaseClick}
+                            onRowDoubleClick={handleCaseDoubleClick}
+                            sortConfig={sortConfig as any}
+                            onSort={handleSort as any}
+                            allSelected={paginatedCases.length > 0 && paginatedCases.every(c => selectedCases.includes(c.fileNumber))}
+                            onToggleSelectAll={() => {
+                                const ids = paginatedCases.map(c => c.fileNumber);
+                                setSelectedCases(prev => ids.every(id => prev.includes(id)) ? prev.filter(id => !ids.includes(id)) : [...new Set([...prev, ...ids])]);
+                            }}
                         />
-                    ))}
+                    </div>
+
+                    {/* Empty State */}
                     {paginatedCases.length === 0 && (
-                        <div className="col-span-full text-center py-12 text-slate-500">
-                            <p className="text-lg font-medium">No se encontraron expedientes</p>
-                            <p className="text-sm mt-2">Intenta ajustar los filtros de búsqueda</p>
+                        <div className="flex flex-col items-center justify-center py-20 bg-slate-50 rounded-lg border border-dashed border-[#cfdbe7]">
+                            <p className="text-[#4c739a] text-base font-normal">No se han encontrado expedientes que coincidan con los criterios.</p>
+                            <button onClick={handleClearFilters} className="mt-4 text-[#4c739a] font-normal text-sm hover:underline uppercase tracking-widest">Limpiar todos los filtros</button>
                         </div>
                     )}
+
+                    {/* Pagination and View Options */}
+                    <PaginationControls
+                        currentPage={currentPage}
+                        totalPages={totalPagesValue}
+                        pageSize={pageSize as PageSize}
+                        totalItems={totalItems}
+                        onPageChange={setCurrentPage}
+                        onPageSizeChange={(size) => setPageSize(size as typeof pageSize)}
+                        variant="default"
+                    />
                 </div>
-            ) : (
-                <div className="divide-y border rounded-lg bg-white">
-                    <div className="grid grid-cols-[auto_1fr_1fr_3fr_1fr_1fr_1fr_1fr_2fr] gap-2 p-3 font-bold text-sm bg-slate-200">
-                        <div className="flex items-center justify-center">
-                            <input
-                                type="checkbox"
-                                checked={paginatedCases.length > 0 && paginatedCases.every(c => selectedCases.includes(c.fileNumber))}
-                                onChange={handleSelectAll}
-                                className="w-4 h-4 text-sky-600 rounded border-gray-300 focus:ring-sky-500"
-                            />
+            </div >
+            {/* Modals extracted to component to fix syntax/root errors */}
+            < DashboardModals
+                isBatchCloseModalOpen={isBatchCloseModalOpen}
+                setIsBatchCloseModalOpen={setIsBatchCloseModalOpen}
+                confirmBatchClose={confirmBatchClose}
+                selectedCasesCount={selectedCases.length}
+                isBatchDeleteModalOpen={isBatchDeleteModalOpen}
+                setIsBatchDeleteModalOpen={setIsBatchDeleteModalOpen}
+                confirmBatchDelete={confirmBatchDelete}
+                deletePassword={appSettings?.deletePassword}
+            />
+
+            {previewCase && (
+                <CasePreviewModal
+                    isOpen={!!previewCase}
+                    onClose={() => setPreviewCase(null)}
+                    caseRecord={previewCase}
+                />
+            )}
+
+            {/* 1. REPORT OF SELECTED CASES (Print Only) */}
+            {
+                !caseToPrint && (
+                    <div id="print-root" className="hidden print:block bg-white p-[10mm] w-full min-h-screen">
+                        {/* Professional Header */}
+                        <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4 mb-8">
+                            <div>
+                                <h2 className="text-xl font-normal text-slate-900 uppercase tracking-widest">Gestor de Expedientes Pro</h2>
+                                <p className="text-[10px] text-slate-400 font-normal uppercase tracking-widest mt-1">
+                                    {selectedCases.length > 0 ? `Reporte de Selección (${selectedCases.length} registros)` : `Reporte de Consulta (${processedCases.length} registros)`}
+                                </p>
+                            </div>
+                            <div className="bg-slate-900 text-white px-6 py-3 rounded-xl text-right">
+                                <p className="text-[8px] font-normal uppercase opacity-70 mb-1 tracking-widest">Total Saldo Seleccionado</p>
+                                <p className="text-2xl font-normal">
+                                    {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(selectedCases.length > 0 ? selectedTotalSaldo : processedCases.reduce((s, c) => s + (c.economicData?.totalAmount || 0), 0))}
+                                </p>
+                            </div>
+                            <div className="text-right text-[10px] text-slate-400 font-normal leading-tight uppercase tracking-widest">
+                                <p>Generado el: {new Date().toLocaleDateString('es-ES')} {new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</p>
+                                <p>Responsable: {currentUser?.name || 'Administrador'}</p>
+                            </div>
                         </div>
-                        <div
-                            className="cursor-pointer hover:bg-slate-300 flex items-center gap-1 truncate"
-                            onClick={() => {
-                                const direction = sortConfig?.key === 'type' && sortConfig.direction === 'asc' ? 'desc' : 'asc';
-                                setSortConfig({ key: 'type', direction });
-                            }}
-                        >
-                            Tipo {sortConfig?.key === 'type' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+
+                        {/* Active Filters Block */}
+                        {activeFiltersText && (
+                            <div className="mb-6 px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+                                <p className="text-[9px] font-normal text-slate-500 uppercase tracking-widest">
+                                    <span className="text-slate-900 mr-2">Filtros Activos:</span>
+                                    {activeFiltersText}
+                                </p>
+                            </div>
+                        )}
+
+                        {/* Report Table */}
+                        <table className="w-full border-collapse">
+                            <thead>
+                                <tr className="bg-slate-100 border-y border-slate-900">
+                                    <th className="px-2 py-3 text-left text-[10px] font-normal uppercase border-r border-slate-200 tracking-widest">Expediente</th>
+                                    <th className="px-2 py-3 text-left text-[10px] font-normal uppercase border-r border-slate-200 tracking-widest">Identificador</th>
+                                    <th className="px-2 py-3 text-left text-[10px] font-normal uppercase border-r border-slate-200 tracking-widest">Cliente</th>
+                                    <th className="px-2 py-3 text-right text-[10px] font-normal uppercase border-r border-slate-200 tracking-widest">Saldo</th>
+                                    <th className="px-2 py-3 text-left text-[10px] font-normal uppercase border-r border-slate-200 tracking-widest">F. Apertura</th>
+                                    <th className="px-2 py-3 text-left text-[10px] font-normal uppercase border-r border-slate-200 tracking-widest">F. Cierre</th>
+                                    <th className="px-2 py-3 text-left text-[10px] font-normal uppercase border-r border-slate-200 tracking-widest">Situación</th>
+                                    <th className="px-2 py-3 text-left text-[10px] font-normal uppercase border-r border-slate-200 tracking-widest">Estado</th>
+                                    <th className="px-2 py-3 text-left text-[10px] font-normal uppercase tracking-widest">Responsable</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {(selectedCases.length > 0
+                                    ? processedCases.filter(c => selectedCases.includes(c.fileNumber))
+                                    : processedCases
+                                ).map((c) => (
+                                    <tr key={c.fileNumber} className="border-b border-slate-200">
+                                        <td className="px-2 py-2 text-[10px] font-normal border-r border-slate-100 whitespace-nowrap">{c.fileNumber}</td>
+                                        <td className="px-2 py-2 text-[10px] font-normal border-r border-slate-100">{c.clientSnapshot?.documento || c.client.nif || '—'}</td>
+                                        <td className="px-2 py-2 text-[10px] font-normal border-r border-slate-100 truncate max-w-[150px]">{c.clientSnapshot?.nombre || `${c.client.firstName} ${c.client.surnames}`}</td>
+                                        <td className="px-2 py-2 text-[10px] font-normal text-right border-r border-slate-100">{new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(c.economicData?.totalAmount || 0)}</td>
+                                        <td className="px-2 py-2 text-[10px] font-normal border-r border-slate-100 text-center">{c.createdAt && !isNaN(new Date(c.createdAt).getTime()) ? new Date(c.createdAt).toLocaleDateString('es-ES') : '—'}</td>
+                                        <td className="px-2 py-2 text-[10px] font-normal border-r border-slate-100 text-center">{c.closedAt && !isNaN(new Date(c.closedAt).getTime()) ? new Date(c.closedAt).toLocaleDateString('es-ES') : (c.status === 'Cerrado' ? '—' : 'VIGENTE')}</td>
+                                        <td className="px-2 py-2 text-[10px] font-normal italic border-r border-slate-100">{c.situation || 'Iniciado'}</td>
+                                        <td className="px-2 py-2 text-[10px] font-normal border-r border-slate-100">
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-normal uppercase border border-slate-200 bg-white tracking-widest">
+                                                {c.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-2 py-2 text-[10px] font-normal uppercase text-slate-500 tracking-widest">
+                                            {users.find(u => u.id === c.fileConfig?.responsibleUserId)?.name || '—'}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+
+                        {/* Footer */}
+                        <div className="mt-8 flex justify-between items-center text-[9px] text-slate-400 font-normal uppercase tracking-widest">
+                            <span>Documento Oficial generado por Gestor de Expedientes Pro</span>
+                            <span>Auditoría de Control Administrativo</span>
+                            <span>Página 1 de 1</span>
                         </div>
-                        <div className="truncate">EXPEDIENTE</div>
-                        <div className="truncate">Cliente</div>
-                        <div
-                            className="cursor-pointer hover:bg-slate-300 flex items-center justify-center gap-1"
-                            onClick={() => {
-                                const direction = sortConfig?.key === 'createdAt' && sortConfig.direction === 'asc' ? 'desc' : 'asc';
-                                setSortConfig({ key: 'createdAt', direction });
-                            }}
-                        >
-                            FECHA APERTURA {sortConfig?.key === 'createdAt' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                        </div>
-                        <div
-                            className="cursor-pointer hover:bg-slate-300 flex items-center justify-center gap-1"
-                            onClick={() => {
-                                const direction = sortConfig?.key === 'closedAt' && sortConfig.direction === 'asc' ? 'desc' : 'asc';
-                                setSortConfig({ key: 'closedAt', direction });
-                            }}
-                        >
-                            FECHA CIERRE {sortConfig?.key === 'closedAt' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                        </div>
-                        <div className="text-center truncate">Saldo</div>
-                        <div className="">
-                            <select
-                                value={situationFilter}
-                                onChange={e => setSituationFilter(e.target.value)}
-                                className="w-full border rounded p-1 text-xs"
-                            >
-                                <option value="Todos">Todos</option>
-                                <option value="Iniciado">Iniciado</option>
-                                <option value="En Proceso">En Proceso</option>
-                                <option value="Cerrado">Cerrado</option>
-                                <option value="Finalizado">Finalizado</option>
-                            </select>
-                        </div>
-                        <div className="">Estado</div>
                     </div>
-                    {paginatedCases.map((c) => (
-                        <ExpedienteListItem
-                            key={c.fileNumber}
-                            caseRecord={c}
-                            onSelectCase={handleCaseClick}
-                            isSelected={selectedCases.includes(c.fileNumber)}
-                            onToggleSelection={handleToggleCase}
-                        />
-                    ))}
-                    {paginatedCases.length === 0 && (
-                        <div className="p-12 text-center text-slate-500">
-                            <p className="text-lg font-medium">No se encontraron expedientes</p>
-                            <p className="text-sm mt-2">Intenta ajustar los filtros de búsqueda</p>
+                )
+            }
+
+            {/* 2. SINGLE CASE LAYOUT (Existing Print Only) */}
+            {
+                caseToPrint && (
+                    <div id="print-root" className="fixed inset-0 bg-white z-[100] p-10 print:block hidden overflow-y-auto">
+                        {/* Header Institucional de Impresión */}
+                        <div className="flex justify-between items-center border-b-2 border-slate-900 pb-4 mb-8">
+                            <div>
+                                <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Gestor de Expedientes Pro</h2>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Sistema de Gestión Administrativa • Reporte Oficial</p>
+                            </div>
+                            <div className="text-right text-[10px] text-slate-400 font-bold leading-tight">
+                                <p>IMPRESO EL: {new Date().toLocaleDateString('es-ES')} A LAS {new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</p>
+                                <p>USUARIO: {currentUser?.name || 'Sistema'} ({currentUser?.role || 'user'})</p>
+                            </div>
                         </div>
-                    )}
-                </div>
-            )}
 
-            {/* Pagination Controls */}
-            {totalItems > 0 && (
-                <PaginationControls
-                    currentPage={currentPage}
-                    totalPages={totalPages}
-                    pageSize={pageSize}
-                    totalItems={totalItems}
-                    onPageChange={setCurrentPage}
-                    onPageSizeChange={setPageSize}
-                />
-            )}
+                        <div className="max-w-4xl mx-auto border border-slate-200 p-8 rounded-2xl shadow-sm bg-white">
+                            <div className="flex justify-between items-start border-b border-slate-200 pb-6 mb-8">
+                                <div>
+                                    <h1 className="text-3xl font-black text-slate-900 mb-1">DETALLE DE EXPEDIENTE</h1>
+                                    <p className="text-[#1380ec] font-black text-xl tracking-tighter">{caseToPrint.fileNumber}</p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">SITUACIÓN</p>
+                                    <span className="px-3 py-1 bg-slate-100 rounded-full text-slate-700 font-black text-sm uppercase">{caseToPrint.situation || 'INICIADO'}</span>
+                                </div>
+                            </div>
 
-            {caseToDelete && (
-                <ConfirmationModal
-                    isOpen={!!caseToDelete}
-                    title="Eliminar Expediente"
-                    message={`¿Eliminar definitivamente el expediente ${caseToDelete}?`}
-                    onConfirm={confirmDelete}
-                    onClose={() => setCaseToDelete(null)}
-                />
-            )}
+                            <div className="grid grid-cols-2 gap-10 mb-10">
+                                {/* SECCIÓN CLIENTE */}
+                                <div className="space-y-6">
+                                    <section className="print-section">
+                                        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 border-l-4 border-[#1380ec] pl-3">Datos del Cliente</h3>
+                                        <div className="space-y-2">
+                                            <p className="text-sm border-b border-slate-50 pb-2 flex justify-between">
+                                                <span className="font-bold text-slate-500 uppercase text-[10px]">Titular:</span>
+                                                <span className="text-slate-900 font-black truncate max-w-[200px]">{caseToPrint.clientSnapshot?.nombre || `${caseToPrint.client.firstName} ${caseToPrint.client.surnames}`}</span>
+                                            </p>
+                                            <p className="text-sm border-b border-slate-50 pb-2 flex justify-between">
+                                                <span className="font-bold text-slate-500 uppercase text-[10px]">NIF/CIF:</span>
+                                                <span className="text-slate-900 font-black">{caseToPrint.clientSnapshot?.documento || caseToPrint.client.nif}</span>
+                                            </p>
+                                            <p className="text-sm flex justify-between">
+                                                <span className="font-bold text-slate-500 uppercase text-[10px]">Contacto:</span>
+                                                <span className="text-slate-900 font-black">{caseToPrint.client.email || '—'}</span>
+                                            </p>
+                                        </div>
+                                    </section>
 
-            <ConfirmationModal
-                isOpen={isBatchCloseModalOpen}
-                title="Cerrar Expedientes"
-                message={`¿Estás seguro de que deseas cerrar los ${selectedCases.length} expedientes seleccionados? Se registrará la fecha de cierre actual.`}
-                onConfirm={confirmBatchClose}
-                onClose={() => setIsBatchCloseModalOpen(false)}
-            />
+                                    {/* SECCIÓN ADMIN / FECHAS */}
+                                    <section className="print-section">
+                                        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 border-l-4 border-slate-200 pl-3">Tiempos y Responsable</h3>
+                                        <div className="space-y-2">
+                                            <p className="text-sm border-b border-slate-50 pb-2 flex justify-between">
+                                                <span className="font-bold text-slate-500 uppercase text-[10px]">Apertura:</span>
+                                                <span className="text-slate-900 font-black">
+                                                    {caseToPrint.createdAt && !isNaN(new Date(caseToPrint.createdAt).getTime())
+                                                        ? new Date(caseToPrint.createdAt).toLocaleDateString('es-ES')
+                                                        : '—'}
+                                                </span>
+                                            </p>
+                                            <p className="text-sm border-b border-slate-50 pb-2 flex justify-between">
+                                                <span className="font-bold text-slate-500 uppercase text-[10px]">Cierre:</span>
+                                                <span className="text-slate-900 font-black">
+                                                    {caseToPrint.closedAt
+                                                        ? (!isNaN(new Date(caseToPrint.closedAt).getTime()) ? new Date(caseToPrint.closedAt).toLocaleDateString('es-ES') : '—')
+                                                        : 'VIGENTE'}
+                                                </span>
+                                            </p>
+                                            <p className="text-sm flex justify-between">
+                                                <span className="font-bold text-slate-500 uppercase text-[10px]">Gestor:</span>
+                                                <span className="text-slate-900 font-black uppercase text-xs">{users.find(u => u.id === caseToPrint.fileConfig.responsibleUserId)?.name || caseToPrint.fileConfig.responsibleUserId || '—'}</span>
+                                            </p>
+                                        </div>
+                                    </section>
+                                </div>
 
-            <ConfirmationModal
-                isOpen={!!caseToClose}
-                title="Cerrar Expediente"
-                message={`¿Estás seguro de que deseas cerrar el expediente ${caseToClose?.fileNumber}? Se registrará la fecha de cierre actual.`}
-                onConfirm={handleSingleClose}
-                onClose={() => setCaseToClose(null)}
-            />
+                                {/* SECCIÓN ESTADO Y SALDO */}
+                                <div className="space-y-6">
+                                    <section className="p-6 bg-slate-50 rounded-2xl border border-slate-100 print-section">
+                                        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Estado de Tramitación</h3>
+                                        <div className="flex flex-col gap-3">
+                                            <span className={`px-4 py-2 rounded-xl text-center text-sm font-black ring-4 ring-white shadow-sm ${caseToPrint.status.includes('Finalizado') ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                                {caseToPrint.status.toUpperCase()}
+                                            </span>
+                                            <p className="text-[9px] text-center text-slate-400 font-black uppercase">
+                                                Última Variación: {caseToPrint.updatedAt && !isNaN(new Date(caseToPrint.updatedAt).getTime())
+                                                    ? new Date(caseToPrint.updatedAt).toLocaleString('es-ES')
+                                                    : '—'}
+                                            </p>
+                                        </div>
+                                    </section>
 
-            <ConfirmationModal
-                isOpen={isBatchDeleteModalOpen}
-                title="Eliminar Expedientes"
-                message={`¿Estás seguro de que deseas eliminar los ${selectedCases.length} expedientes seleccionados? Esta acción no se puede deshacer.`}
-                onConfirm={confirmBatchDelete}
-                onClose={() => setIsBatchDeleteModalOpen(false)}
-            />
+                                    {caseToPrint.economicData?.totalAmount >= 0 && (
+                                        <section className="p-6 bg-slate-900 rounded-2xl text-white shadow-xl print-section">
+                                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">BALANCE ECONÓMICO</h3>
+                                            <p className="text-4xl font-black">{new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(caseToPrint.economicData.totalAmount)}</p>
+                                            <div className="h-px bg-white/10 my-3" />
+                                            <div className="flex justify-between text-[10px] text-slate-400 font-bold">
+                                                <span>BASE IMPONIBLE:</span>
+                                                <span className="text-white">{new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(caseToPrint.economicData.subtotalAmount)}</span>
+                                            </div>
+                                        </section>
+                                    )}
+                                </div>
+                            </div>
 
-            <NewCaseModal
-                isOpen={isNewCaseModalOpen}
-                onClose={() => setIsNewCaseModalOpen(false)}
-                onCreate={(category: FileCategory, subType?: string) => {
-                    setIsNewCaseModalOpen(false);
-                    onCreateNewCase(category, subType);
-                }}
-            />
+                            {/* Bloque Legal / Sello */}
+                            <div className="flex justify-between items-end mt-12 pt-8 border-t border-slate-100">
+                                <div className="text-[9px] text-slate-400 font-bold max-w-sm">
+                                    <p>Este documento es una representación digital de los datos almacenados en el Gestor de Expedientes Pro.</p>
+                                    <p className="mt-1">Identificador Único de Proceso: {btoa(caseToPrint.fileNumber)}</p>
+                                </div>
+                                <div className="w-32 h-32 border-2 border-slate-100 rounded-lg flex flex-col items-center justify-center p-2 opacity-50">
+                                    <p className="text-[8px] font-black text-slate-300 uppercase mb-2">Sello Control</p>
+                                    <div className="w-16 h-16 bg-slate-50 rounded-md border border-slate-100" />
+                                </div>
+                            </div>
 
-            {isReportsModuleOpen && (
-                <ImprovedReportsModule onClose={() => setIsReportsModuleOpen(false)} />
-            )}
-        </div>
+                            <div className="text-center text-[9px] text-slate-400 mt-8 font-black uppercase tracking-tighter">
+                                DOCUMENTO GENERADO POR GESTOR DE EXPEDIENTES PRO • AUDITORÍA INTERNA
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+        </>
     );
 };
 

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Client } from '../types';
 import { XMarkIcon } from './icons';
+import { Button } from './ui/Button';
 
 interface SavedClientsModalProps {
   isOpen: boolean;
@@ -25,30 +26,30 @@ const SavedClientsModal: React.FC<SavedClientsModalProps> = ({ isOpen, onClose, 
     setSearchTerm('');
     onClose();
   };
-  
+
   const filteredClients = clients.filter(client => {
-    const fullName = `${client.firstName} ${client.surnames}`.toLowerCase();
+    const fullName = (client.nombre || `${client.firstName || ''} ${client.surnames || ''}`).toLowerCase();
     const searchTermLower = searchTerm.toLowerCase();
-    return fullName.includes(searchTermLower) || client.nif.toLowerCase().includes(searchTermLower);
+    return fullName.includes(searchTermLower) || (client.nif || '').toLowerCase().includes(searchTermLower);
   });
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={handleClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg m-4 p-6 flex flex-col" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4 flex-shrink-0">
-          <h3 className="text-lg font-semibold text-slate-900">Seleccionar Cliente Guardado</h3>
-          <button onClick={handleClose} className="text-slate-500 hover:text-slate-800">
-            <XMarkIcon />
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg m-4 overflow-hidden flex flex-col border border-slate-100 animate-in fade-in zoom-in duration-300" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center px-8 py-6 border-b border-slate-50 flex-shrink-0">
+          <h3 className="app-section-title !text-base !mb-0">Seleccionar Cliente Guardado</h3>
+          <button onClick={handleClose} className="text-slate-300 hover:text-slate-600 transition-colors">
+            <XMarkIcon className="w-6 h-6" />
           </button>
         </div>
 
-        <div className="mb-4 flex-shrink-0">
+        <div className="px-8 py-6 flex-shrink-0 bg-slate-50/30">
           <input
             type="text"
             placeholder="Buscar por nombre, apellidos o Identificador..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-sky-500 focus:border-sky-500"
+            className="w-full px-5 py-3 bg-white border border-slate-200 rounded-xl text-sm font-normal text-slate-700 shadow-sm focus:ring-4 focus:ring-sky-500/10 focus:border-sky-500 outline-none transition-all"
             autoFocus
           />
         </div>
@@ -60,22 +61,28 @@ const SavedClientsModal: React.FC<SavedClientsModalProps> = ({ isOpen, onClose, 
                 <li
                   key={client.id}
                   onClick={() => onSelect(client)}
-                  className="p-4 hover:bg-slate-100 cursor-pointer transition-colors duration-150 rounded-lg"
+                  className="px-8 py-5 hover:bg-slate-50 cursor-pointer transition-colors duration-150 border-b border-slate-50 last:border-b-0"
                 >
-                  <p className="font-semibold text-slate-800">{client.surnames}{client.firstName ? `, ${client.firstName}` : ''}</p>
-                  <p className="text-sm text-slate-600">{client.nif}</p>
-                  <p className="text-sm text-slate-500">{[client.address, client.city, client.province].filter(Boolean).join(', ')}</p>
+                  <p className="text-sm font-normal text-slate-800 uppercase tracking-tight">{client.nombre || `${client.surnames || ''}${client.firstName ? `, ${client.firstName}` : ''}`.trim() || 'Sin Titular'}</p>
+                  <div className="app-label !text-slate-400 !lowercase mt-1">
+                    <span>{client.nif}</span>
+                    <span className="mx-2 opacity-30">|</span>
+                    <span>{[client.address, client.city, client.province].filter(Boolean).join(', ')}</span>
+                  </div>
                 </li>
               ))
             ) : (
               <p className="text-center text-slate-500 p-4">
-                {clients.length === 0 
-                    ? 'No hay clientes guardados.' 
-                    : 'No se encontraron clientes con ese criterio.'
+                {clients.length === 0
+                  ? 'No hay clientes guardados.'
+                  : 'No se encontraron clientes con ese criterio.'
                 }
               </p>
             )}
           </ul>
+        </div>
+        <div className="bg-slate-50/50 px-8 py-4 border-t border-slate-100 flex justify-end">
+          <Button variant="ghost" onClick={handleClose}>Cerrar</Button>
         </div>
       </div>
     </div>

@@ -6,10 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "import-clients": "node scripts/import-clients.cjs",
+    "import-clients-fast": "node scripts/import-clients-fast.cjs",
+    "delete-all-clients": "node scripts/delete-all-clients.cjs",
+    "generate-sample-excel": "node scripts/generate-sample-excel.cjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
+    "@react-pdf/renderer": "^4.3.2",
     "clsx": "^2.1.0",
     "date-fns": "^3.3.1",
     "docxtemplater": "^3.45.0",
@@ -23,7 +28,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.0",
-    "recharts": "^3.5.0",
+    "recharts": "^2.12.7",
     "tailwind-merge": "^2.2.1",
     "tesseract.js": "^5.0.5",
     "xlsx": "^0.18.5",
@@ -38,6 +43,7 @@
     "autoprefixer": "^10.4.17",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
+    "tsx": "^4.21.0",
     "typescript": "^5.2.2",
     "vite": "^5.1.4"
   }

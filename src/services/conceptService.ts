@@ -31,15 +31,16 @@ export const getActiveConcepts = async (): Promise<ConceptCatalog[]> => {
         const conceptsRef = collection(db, CONCEPTS_COLLECTION);
         const q = query(
             conceptsRef,
-            where('isActive', '==', true),
-            orderBy('name', 'asc')
+            where('isActive', '==', true)
         );
         const snapshot = await getDocs(q);
 
-        return snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        } as ConceptCatalog));
+        return snapshot.docs
+            .map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            } as ConceptCatalog))
+            .sort((a, b) => a.name.localeCompare(b.name));
     } catch (error) {
         console.error('Error getting active concepts:', error);
         return [];
@@ -55,15 +56,16 @@ export const getConceptsByType = async (type: LineType): Promise<ConceptCatalog[
         const q = query(
             conceptsRef,
             where('category', '==', type),
-            where('isActive', '==', true),
-            orderBy('name', 'asc')
+            where('isActive', '==', true)
         );
         const snapshot = await getDocs(q);
 
-        return snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        } as ConceptCatalog));
+        return snapshot.docs
+            .map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            } as ConceptCatalog))
+            .sort((a, b) => a.name.localeCompare(b.name));
     } catch (error) {
         console.error('Error getting concepts by type:', error);
         return [];

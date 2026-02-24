@@ -1,0 +1,83 @@
+// Add these functions to movimientoService.ts after updateMovimiento
+
+// Insert this code at line ~320 (after updateMovimiento function)
+
+// Add naturaleza/regimenIva change protection
+// Replace the updateMovimiento function with this enhanced version:
+
+/*
+export async function updateMovimiento(
+    id: string,
+    data: Partial<Omit<Movimiento, 'id' | 'createdAt' | 'updatedAt'>>
+): Promise<void> {
+    try {
+        const current = await getMovimientoById(id);
+        if (!current) {
+            throw new Error(`Movimiento con ID "${id}" no encontrado`);
+        }
+
+        // Check if naturaleza or regimenIva is being changed
+        if (data.naturaleza && data.naturaleza !== current.naturaleza) {
+            const prefijoMovimientosQuery = query(
+                collection(db, 'prefijoMovimientos'),
+                where('movimientoId', '==', id)
+            );
+            const prefijoMovimientosSnapshot = await getDocs(prefijoMovimientosQuery);
+            
+            if (!prefijoMovimientosSnapshot.empty) {
+                throw new Error(
+                    `No se puede cambiar la naturaleza de este movimiento porque está siendo usado en ${prefijoMovimientosSnapshot.size} prefijo(s). ` +
+                    `Cambiar la naturaleza podría romper la contabilidad de expedientes existentes.`
+                );
+            }
+        }
+
+        if (data.regimenIva && data.regimenIva !== current.regimenIva) {
+            const prefijoMovimientosQuery = query(
+                collection(db, 'prefijoMovimientos'),
+                where('movimientoId', '==', id)
+            );
+            const prefijoMovimientosSnapshot = await getDocs(prefijoMovimientosQuery);
+            
+            if (!prefijoMovimientosSnapshot.empty) {
+                throw new Error(
+                    `No se puede cambiar el régimen IVA de este movimiento porque está siendo usado en ${prefijoMovimientosSnapshot.size} prefijo(s). ` +
+                    `Cambiar el régimen IVA podría romper la contabilidad de expedientes existentes.`
+                );
+            }
+        }
+
+        const cuentas = await getCuentasContables(id);
+        const merged = { ...current, ...data };
+        const validation = validateMovimiento(merged, cuentas);
+        
+        if (!validation.valid) {
+            throw new Error(`Validation failed: ${validation.errors.join(', ')}`);
+        }
+
+        if (validation.warnings.length > 0) {
+            console.warn('Movimiento warnings:', validation.warnings);
+        }
+
+        if (data.codigo && normalizeCodigo(data.codigo) !== normalizeCodigo(current.codigo)) {
+            const existing = await getMovimientoByCodigo(data.codigo);
+            if (existing && existing.id !== id) {
+                throw new Error(
+                    `Ya existe un movimiento con el código "${existing.codigo}" ` +
+                    `(se detectó como duplicado de "${data.codigo}")`
+                );
+            }
+            data.codigo = data.codigo.toUpperCase();
+        }
+
+        const docRef = doc(db, COLLECTION_NAME, id);
+        await updateDoc(docRef, {
+            ...data,
+            updatedAt: Timestamp.now().toDate().toISOString()
+        });
+    } catch (error) {
+        console.error('Error updating movimiento:', error);
+        throw error;
+    }
+}
+*/

@@ -53,7 +53,7 @@ const AdministratorsModal: React.FC<AdministratorsModalProps> = ({
         if (processedValue.length > 2) {
             const lowerCaseValue = processedValue.toLowerCase();
             const filtered = savedClients.filter(c =>
-                c.nif.toLowerCase().startsWith(lowerCaseValue)
+                (c.nif || '').toLowerCase().startsWith(lowerCaseValue)
             );
             setSuggestions(filtered.slice(0, 5));
         } else {
@@ -86,8 +86,10 @@ const AdministratorsModal: React.FC<AdministratorsModalProps> = ({
             }
         }
 
+        const fullName = `${newAdmin.surnames || ''}, ${newAdmin.firstName || ''}`.trim();
         const admin: Administrator = {
             id: Date.now().toString(),
+            nombre: fullName,
             firstName: newAdmin.firstName!,
             surnames: newAdmin.surnames || '',
             nif: newAdmin.nif,
@@ -143,7 +145,7 @@ const AdministratorsModal: React.FC<AdministratorsModalProps> = ({
                             <div key={admin.id} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-lg shadow-sm hover:border-indigo-200 transition-colors">
                                 <div className="flex items-center gap-4">
                                     <div className="h-10 w-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold">
-                                        {admin.firstName.charAt(0)}
+                                        {(admin.firstName || '').charAt(0)}
                                     </div>
                                     <div>
                                         <p className="font-medium text-slate-900">{admin.firstName} {admin.surnames}</p>

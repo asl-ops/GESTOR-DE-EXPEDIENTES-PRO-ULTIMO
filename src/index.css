@@ -1,3 +1,717 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    /* 🛠️ CORE THEME SYSTEM (DEF: APPLE LIGHT - MODIFIED FOR EXPEDIENTES) */
+    --theme-h: 212;
+    /* Slightly deeper blue hue for Expedientes */
+    --theme-s: 70%;
+    /* Default Saturation */
+    --theme-l: 35%;
+    /* Base Lightness (Action color) */
+
+    /* Surface Control */
+    --sidebar-l: 100%;
+    /* Header/Sidebar Lightness */
+    --bg-l: 98%;
+
+    /* Relief Control */
+    --border-opacity: 0.12;
+    --shadow-opacity: 0.05;
+
+    /* 🎨 SEMANTIC TOKENS (CALCULATED) */
+    --primary: hsl(var(--theme-h), var(--theme-s), var(--theme-l));
+    --primary-muted: hsl(var(--theme-h), calc(var(--theme-s) * 0.3), 95%);
+
+    --sidebar-bg: hsl(var(--theme-h), 10%, var(--sidebar-l));
+    --bg-base: hsl(var(--theme-h), 15%, var(--bg-l));
+    --bg-card: #FFFFFF;
+
+    --text-primary: hsl(var(--theme-h), 45%, 15%);
+    --text-secondary: hsl(var(--theme-h), 25%, 45%);
+    --text-muted: hsl(var(--theme-h), 15%, 65%);
+    --blue-emphasis: var(--primary);
+
+    /* Multi-signal Active State */
+    --active-bg: var(--primary);
+    --active-text: #FFFFFF;
+    --active-accent: hsl(var(--theme-h), 100%, 75%);
+
+    --border-color: rgba(var(--theme-h), 71, 171, var(--border-opacity));
+    --border-dynamic: rgba(var(--theme-h), 71, 171, var(--border-opacity));
+    --shadow-dynamic: 0 10px 30px -10px rgba(0, 26, 51, var(--shadow-opacity));
+
+    /* Legacy Sync (Keep names but link to HSL) */
+    --corporate-accent: var(--primary);
+    --ui-title: var(--text-primary);
+    --ui-label: var(--text-secondary);
+    --ui-value: var(--text-primary);
+    --ui-divider: var(--border-color);
+  }
+
+  body {
+    @apply bg-[#F9FAFB] selection:bg-sky-100 selection:text-sky-900;
+    color: var(--text-primary);
+    font-weight: var(--font-normal);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* 🎨 APPLE/NOTION TYPOGRAPHY SYSTEM */
+
+  /* Headers: moderate semibold, never heavy */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-weight: var(--font-semibold) !important;
+    color: var(--text-primary);
+  }
+
+  /* Labels & Table Headers: medium weight, secondary color */
+  label,
+  th {
+    font-weight: var(--font-medium) !important;
+    color: var(--text-secondary);
+  }
+
+  /* Strong/Bold: soft semibold, not heavy */
+  strong,
+  b {
+    font-weight: var(--font-semibold) !important;
+    color: var(--text-primary);
+  }
+
+  /* Links: usar azul denim por defecto, no azul brillante */
+  a {
+    font-weight: var(--font-medium) !important;
+    color: var(--text-secondary);
+    /* Azul denim medio #2c5282 */
+    text-decoration: none;
+  }
+
+  a:hover {
+    color: var(--blue-emphasis);
+    /* Al hover, azul brillante */
+  }
+
+  /* Ensure all text elements use blue denim by default */
+  * {
+    color: inherit;
+  }
+
+  p,
+  span,
+  div,
+  td {
+    color: var(--text-primary);
+  }
+
+  /* 🚨 UNIVERSAL FONT WEIGHT RESET - NO BOLDNESS ALLOWED */
+  * {
+    font-weight: inherit;
+  }
+
+  html,
+  body {
+    font-weight: 400;
+  }
+
+  /* Override ALL elements to normal weight */
+  p,
+  span,
+  div,
+  td,
+  th,
+  li,
+  a {
+    font-weight: 400 !important;
+  }
+
+  /* Form Elements: normal weight */
+  button,
+  input,
+  select,
+  textarea {
+    font-weight: var(--font-normal) !important;
+  }
+
+  /* Tailwind Font Weight Overrides (soft approach) */
+  .font-bold {
+    font-weight: var(--font-semibold) !important;
+  }
+
+  .font-semibold {
+    font-weight: var(--font-medium) !important;
+  }
+
+  .font-medium {
+    font-weight: 450 !important;
+    /* Between normal and medium */
+  }
+
+  .font-mono {
+    font-weight: var(--font-normal) !important;
+    /* Force normal weight for monospace */
+  }
+
+  .font-black {
+    font-weight: var(--font-semibold) !important;
+    /* Reduce from 900 to 600 */
+  }
+
+  /* 🎨 FORCE NAVIGATION MENU STYLE ON ALL TAILWIND CLASSES */
+
+  /* Text-slate mapping to navigation style */
+  .text-slate-900,
+  .text-slate-800,
+  .text-slate-700,
+  .text-slate-600 {
+    color: #2B3A67 !important;
+    /* text-primary - estándar */
+  }
+
+  .text-slate-500 {
+    color: #6B7A99 !important;
+    /* text-secondary - headers/labels */
+  }
+
+  .text-slate-400 {
+    color: #9AA7C0 !important;
+    /* text-muted - placeholders */
+  }
+
+  /* Text-gray mapping (same as slate) */
+  .text-gray-900,
+  .text-gray-800,
+  .text-gray-700,
+  .text-gray-600 {
+    color: #2B3A67 !important;
+  }
+
+  .text-gray-500 {
+    color: #6B7A99 !important;
+  }
+
+  .text-gray-400 {
+    color: #9AA7C0 !important;
+  }
+
+  /* Azul de marca para enlaces/acciones */
+  .text-sky-500,
+  .text-sky-600,
+  .text-sky-700,
+  .text-blue-500,
+  .text-blue-600 {
+    color: #0079C0 !important;
+    /* Azul marca */
+  }
+
+  /* Custom Scrollbar for Premium Feel */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-slate-50;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 rounded-full hover:bg-slate-400 transition-colors border-2 border-slate-50;
+  }
+
+  /* Hide scrollbar utility */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Remove spin buttons from number inputs (Chrome, Safari, Edge, Opera) */
+  input::-webkit-outer-spin-button,
+  input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  /* Remove spin buttons from number inputs (Firefox) */
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  /* 🪄 CONTINUITY INDICATOR: Elegant bottom fade for scrollable containers */
+  .mask-fade-bottom {
+    mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+  }
+
+  /* Version as overlay for white backgrounds */
+  .scroll-fade-bottom {
+    position: relative;
+  }
+
+  .scroll-fade-bottom::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 48px;
+    background: linear-gradient(to top, white 10%, rgba(255, 255, 255, 0.8) 50%, transparent 100%);
+    pointer-events: none;
+    z-index: 10;
+    border-bottom-left-radius: inherit;
+    border-bottom-right-radius: inherit;
+  }
+}
+
+@layer components {
+
+  /* 🎨 APPLE/NOTION UTILITY CLASSES */
+
+  .app-title {
+    @apply text-[11px] tracking-[0.15em] mb-4 flex items-center gap-2 border-b pb-2 uppercase transition-all;
+    color: var(--text-secondary);
+    border-color: var(--border-color);
+    font-weight: var(--font-medium);
+  }
+
+  .app-section-header {
+    @apply flex items-center gap-2 mb-6 border-b border-transparent pb-1 transition-all;
+    border-bottom-color: var(--border-color);
+  }
+
+  .app-section-title {
+    @apply text-[11px] tracking-[0.2em] uppercase transition-all;
+    color: var(--text-secondary);
+    font-weight: var(--font-medium);
+  }
+
+  .app-label {
+    @apply text-[9px] tracking-[0.18em] uppercase transition-all;
+    color: var(--text-secondary);
+    font-weight: var(--font-medium);
+  }
+
+  .app-label-block {
+    @apply app-label block mb-1.5;
+  }
+
+  /* FORCED TABLE LAYOUT RESET (Anti-desconfiguración) */
+  .expedientes-table {
+    display: block !important;
+    width: 100% !important;
+    overflow-x: auto !important;
+  }
+
+  .expedientes-table table {
+    display: table !important;
+    width: 100% !important;
+    border-collapse: separate !important;
+    table-layout: fixed !important;
+  }
+
+  .expedientes-table thead {
+    display: table-header-group !important;
+  }
+
+  .expedientes-table tbody {
+    display: table-row-group !important;
+  }
+
+  .expedientes-table tr {
+    display: table-row !important;
+  }
+
+  .expedientes-table th,
+  .expedientes-table td {
+    display: table-cell !important;
+    vertical-align: middle !important;
+  }
+
+  .app-value {
+    @apply text-base transition-all;
+    color: var(--text-primary);
+    font-weight: var(--font-normal);
+  }
+
+  .app-muted {
+    @apply text-[10px] tracking-tight transition-all;
+    color: var(--text-tertiary);
+    font-weight: var(--font-normal);
+  }
+
+  .app-divider {
+    border-color: var(--border-color) !important;
+  }
+
+  .app-tab {
+    @apply py-3 px-5 text-[11px] uppercase tracking-[0.18em] transition-all relative border-b-2 border-transparent cursor-pointer;
+    color: var(--text-secondary);
+    font-weight: var(--font-medium);
+  }
+
+  .app-tab:hover {
+    color: var(--text-primary);
+    background-color: rgba(37, 99, 235, 0.04);
+    /* Subtle blue hover */
+  }
+
+  .app-tab-active {
+    color: var(--blue-emphasis) !important;
+    border-bottom-color: var(--blue-emphasis) !important;
+    font-weight: var(--font-semibold);
+  }
+
+  /* Legacy compatibility maps */
+  .section-title {
+    @apply app-title;
+  }
+
+  .label-corporate {
+    @apply app-label;
+  }
+
+  .field-corporate {
+    @apply app-value;
+  }
+
+  .divider-corporate {
+    @apply app-divider;
+  }
+
+  .is-selected {
+    @apply ring-2 ring-sky-500 ring-inset;
+    box-shadow: 0 0 15px -3px rgba(14, 165, 233, 0.3);
+  }
+
+  .glass-card {
+    @apply backdrop-blur-xl shadow-xl;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+  }
+
+  .premium-input {
+    @apply w-full rounded-2xl px-5 py-3 text-sm outline-none transition-all shadow-inner;
+    background: var(--bg-base);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    font-weight: var(--font-normal);
+  }
+
+  .premium-input:focus {
+    @apply ring-4;
+    border-color: var(--blue-emphasis);
+    ring-color: rgba(37, 99, 235, 0.1);
+    background: var(--bg-card);
+  }
+}
+
+/* --- ESTRATEGIA DE IMPRESIÓN PROFESIONAL (AISLAMIENTO TOTAL) --- */
+@media print {
+
+  @page {
+    size: A4 portrait;
+    margin: 15mm;
+  }
+
+  /* 1. Ocultamos TODO el árbol visual por defecto */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* 2. Rescatamos SOLO el contenedor de impresión */
+  #print-root,
+  #print-root * {
+    visibility: visible !important;
+  }
+
+  /* 3. Posicionamos el contenedor de impresión como raíz del documento */
+  #print-root {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    display: block !important;
+    z-index: 9999 !important;
+  }
+
+  /* 4. Limpieza de elementos interactivos dentro del reporte */
+  .no-print,
+  #print-root .no-print,
+  #print-root button,
+  #print-root select,
+  #print-root th:first-child,
+  #print-root th:last-child {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* 5. Estilización de Reporte (Tabla) */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 10px !important;
+    /* Fuente profesional compacta */
+    color: black !important;
+    table-layout: auto !important;
+  }
+
+  th,
+  td {
+    border: none !important;
+    padding: 6pt 8pt !important;
+    text-align: left;
+    background: transparent !important;
+    color: black !important;
+    vertical-align: top;
+  }
+
+  .app-print-table td {
+    border-bottom: 0.5pt solid #e2e8f0 !important;
+  }
+
+  .print-color-adjust {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  th {
+    background-color: #f0f0f0 !important;
+    font-weight: bold;
+    text-transform: uppercase;
+    -webkit-print-color-adjust: exact;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* 6. Estilización de Reporte (Ficha Individual) */
+  .print-section {
+    page-break-inside: avoid !important;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  /* ELIMINAR COLORES DE ESTADOS EN LISTADO - FORZADO */
+  td span[class*="bg-"],
+  td div[class*="bg-"],
+  td span[class*="badge"],
+  td .rounded {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border: 1px solid #000000 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    print-color-adjust: economy !important;
+    -webkit-print-color-adjust: economy !important;
+  }
+
+  /* Reset de fondos y sombras para ahorro de tinta y claridad */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+    /* NO forzamos color-adjust para permitir modo ahorro */
+    -webkit-print-color-adjust: economy !important;
+    print-color-adjust: economy !important;
+  }
+
+  /* Ocultar filas no seleccionadas si hay una selección activa (solo en tbody) */
+  .has-selection tbody tr:not(.is-selected) {
+    display: none !important;
+  }
+}
+
+/* Base Animations */
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Transitions for Page Content */
+.page-transition-enter {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.page-transition-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 500ms, transform 500ms;
+}
+
+/* Data Table Utilities */
+.table-sticky-header thead th {
+  position: sticky;
+  top: 0;
+  background-color: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  z-index: 20;
+  box-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.05);
+}
+
+/* Enhanced Animations for Premium Feel */
+@keyframes wave {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes scale-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slide-up {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Utility classes for smooth transitions */
+.transition-smooth {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* 🎨 HERMES ANIMATION SYSTEM */
+
+@keyframes hermes-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes hermes-slide-in-right {
+  from {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes hermes-slide-in-down {
+  from {
+    transform: translateY(-10px) scale(0.95);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes hermes-zoom-in {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Utility fallbacks for missing tailwindcss-animate plugin */
+.animate-in {
+  animation-duration: 300ms;
+  animation-fill-mode: forwards;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fade-in {
+  animation-name: hermes-fade-in;
+}
+
+.slide-in-from-right-4 {
+  animation-name: hermes-slide-in-right;
+}
+
+.slide-in-from-top-2 {
+  animation-name: hermes-slide-in-down;
+}
+
+@keyframes hermes-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-hermes-shimmer {
+  background: linear-gradient(90deg,
+      rgba(241, 245, 249, 0) 0%,
+      rgba(241, 245, 249, 0.8) 50%,
+      rgba(241, 245, 249, 0) 100%);
+  background-size: 200% 100%;
+  animation: hermes-shimmer 2s infinite linear;
+}
+
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.1);
+}

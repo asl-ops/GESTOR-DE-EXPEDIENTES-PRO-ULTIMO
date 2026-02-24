@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { CaseRecord, Communication } from '@/types';
 import { useAppContext } from '@/contexts/AppContext';
 import { useToast } from '@/hooks/useToast';
-import { AlertTriangle, Search, CheckSquare, Square, Loader, Lock } from 'lucide-react';
+import { AlertTriangle, Search, CheckSquare, Square, Loader, Lock, X, ChevronRight } from 'lucide-react';
+import { Client } from '@/types';
 
 const BajarExpedientes: React.FC = () => {
-    const { caseHistory, saveCase, currentUser } = useAppContext();
+    const { caseHistory, saveCase, currentUser, savedClients } = useAppContext();
     const { addToast } = useToast();
 
     const [searchIdentifier, setSearchIdentifier] = useState('');
@@ -13,6 +14,9 @@ const BajarExpedientes: React.FC = () => {
     const [selectedCases, setSelectedCases] = useState<Set<string>>(new Set());
     const [isSearching, setIsSearching] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+    const [suggestions, setSuggestions] = useState<Client[]>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
 
     // Modal de confirmación
     const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -21,25 +25,113 @@ const BajarExpedientes: React.FC = () => {
 
     const DELETION_PASSWORD = '1812';
 
+    // Actualizar sugerencias cuando cambia el texto de búsqueda
     useEffect(() => {
-        if (searchIdentifier.trim()) {
-            handleSearch();
+        if (searchIdentifier.trim().length >= 2 && !selectedClient) {
+            const query = searchIdentifier.toLowerCase();
+            const matchingClients = savedClients.filter(client =>
+                client.nif?.toLowerCase().includes(query) ||
+                client.firstName?.toLowerCase().includes(query) ||
+                client.surnames?.toLowerCase().includes(query) ||
+                client.legalName?.toLowerCase().includes(query)
+            );
+            setSuggestions(matchingClients.slice(0, 5));
+            setShowSuggestions(true);
         } else {
-            setSearchResults([]);
+            setSuggestions([]);
+            setShowSuggestions(false);
         }
-    }, [searchIdentifier]);
+    }, [searchIdentifier, savedClients, selectedClient]);
 
-    const handleSearch = () => {
+    // Auxiliar para normalizar strings de búsqueda (NIFs, nombres)
+    const normalize = (str: string | undefined) => str?.toLowerCase().replace(/[^a-z0-9áéíóúñ]/g, '').trim() || '';
+
+    // Obtener el nombre actual del cliente de savedClients para mejor correlación
+    const getBestClientName = useCallback((clientRecord: CaseRecord['client'], snapshot: CaseRecord['clientSnapshot']) => {
+        // 1. Intentar buscar por NIF en clientes guardados para tener el nombre más actual
+        const nif = normalize(snapshot?.documento || clientRecord.nif || (clientRecord as any).documento);
+        if (nif) {
+            const savedClient = savedClients.find(sc => normalize(sc.nif || sc.documento) === nif);
+            if (savedClient) {
+                return savedClient.legalName || savedClient.nombre || `${savedClient.firstName || ''} ${savedClient.surnames || ''}`.trim();
+            }
+        }
+
+        // 2. Si no hay match en savedClients, usar snapshot
+        if (snapshot?.nombre) return snapshot.nombre;
+
+        // 3. Fallback al objeto client embebido
+        return clientRecord.legalName || clientRecord.nombre || `${clientRecord.firstName || ''} ${clientRecord.surnames || ''}`.trim() || 'Sin Titular';
+    }, [savedClients]);
+
+    const handleSearchByClient = useCallback((client: Client) => {
         setIsSearching(true);
+        const targetNif = normalize(client.nif || client.documento);
+        const targetName = normalize(client.legalName || client.nombre || `${client.firstName} ${client.surnames}`);
 
-        // Search by client NIF/DNI/CIF (partial match) - exclude already deleted cases
-        const results = caseHistory.filter(c =>
-            c.client.nif?.toLowerCase().includes(searchIdentifier.toLowerCase()) &&
-            c.status !== 'Eliminado'
-        );
+        const results = caseHistory.filter(c => {
+            if (c.status === 'Eliminado') return false;
+
+            const caseNif = normalize(c.clientSnapshot?.documento || c.client.nif || (c.client as any).documento);
+            const caseName = normalize(c.clientSnapshot?.nombre || c.client.nombre || c.client.legalName || `${c.client.firstName} ${c.client.surnames}`);
+
+            // Coincidencia por NIF exacto (normalizado)
+            if (targetNif && caseNif === targetNif) return true;
+
+            // Coincidencia por ID de cliente
+            if (c.clienteId === client.id || c.client.id === client.id) return true;
+
+            // Coincidencia por similitud de nombre
+            if (targetName && (caseName.includes(targetName) || targetName.includes(caseName))) return true;
+
+            return false;
+        });
 
         setSearchResults(results);
         setIsSearching(false);
+    }, [caseHistory]);
+
+    const handleSearchDirect = useCallback(() => {
+        setIsSearching(true);
+        const term = searchIdentifier.toLowerCase().trim();
+        const parts = term.split(/\s+/).filter(p => p.length > 0);
+
+        const results = caseHistory.filter(c => {
+            if (c.status === 'Eliminado') return false;
+
+            const snapshotName = (c.clientSnapshot?.nombre || '').toLowerCase();
+            const clientName = (c.client.nombre || c.client.legalName || `${c.client.firstName || ''} ${c.client.surnames || ''}`).toLowerCase();
+            const nif = (c.clientSnapshot?.documento || c.client.nif || (c.client as any).documento || '').toLowerCase();
+            const fileNumber = (c.fileNumber || '').toLowerCase();
+
+            // Debe contener todas las palabras del término de búsqueda en alguna parte
+            return parts.every(part =>
+                snapshotName.includes(part) ||
+                clientName.includes(part) ||
+                nif.includes(part) ||
+                fileNumber.includes(part)
+            );
+        });
+
+        setSearchResults(results);
+        setIsSearching(false);
+    }, [caseHistory, searchIdentifier]);
+
+    // Buscar expedientes cuando se selecciona un cliente o se escribe un NIF exacto
+    useEffect(() => {
+        if (selectedClient) {
+            handleSearchByClient(selectedClient);
+        } else if (searchIdentifier.trim()) {
+            handleSearchDirect();
+        } else {
+            setSearchResults([]);
+        }
+    }, [searchIdentifier, selectedClient, handleSearchByClient, handleSearchDirect]);
+
+    const selectClientSuggestion = (client: Client) => {
+        setSelectedClient(client);
+        setSearchIdentifier(client.legalName || client.nombre || `${client.firstName} ${client.surnames}`);
+        setShowSuggestions(false);
     };
 
     const toggleCase = (fileNumber: string) => {
@@ -114,7 +206,11 @@ const BajarExpedientes: React.FC = () => {
             setSelectedCases(new Set());
 
             // Refresh search results
-            handleSearch();
+            if (selectedClient) {
+                handleSearchByClient(selectedClient);
+            } else {
+                handleSearchDirect();
+            }
         } catch (error) {
             console.error('Error deleting cases:', error);
             addToast('Error al dar de baja expedientes', 'error');
@@ -140,15 +236,58 @@ const BajarExpedientes: React.FC = () => {
             {/* Search */}
             <div className="bg-white p-6 rounded-xl shadow-md border border-slate-200">
                 <div className="flex items-center gap-4">
-                    <div className="flex-1 flex items-center bg-slate-50 border border-slate-300 rounded-lg px-4 py-2">
-                        <Search className="w-5 h-5 text-slate-400 mr-2" />
-                        <input
-                            type="text"
-                            placeholder="Buscar por DNI/CIF/NIF del cliente..."
-                            value={searchIdentifier}
-                            onChange={(e) => setSearchIdentifier(e.target.value)}
-                            className="flex-1 bg-transparent outline-none text-slate-900"
-                        />
+                    <div className="flex-1 relative">
+                        <div className="flex items-center bg-slate-50 border border-slate-300 rounded-lg px-4 py-2 focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all">
+                            <Search className="w-5 h-5 text-slate-400 mr-2" />
+                            <input
+                                type="text"
+                                placeholder="Buscar por DNI/CIF/NIF o nombre del cliente..."
+                                value={searchIdentifier}
+                                onChange={(e) => {
+                                    setSearchIdentifier(e.target.value);
+                                    if (selectedClient) setSelectedClient(null);
+                                }}
+                                className="flex-1 bg-transparent outline-none text-slate-900"
+                            />
+                            {searchIdentifier && (
+                                <button
+                                    onClick={() => {
+                                        setSearchIdentifier('');
+                                        setSelectedClient(null);
+                                        setSearchResults([]);
+                                    }}
+                                    className="p-1 hover:bg-slate-200 rounded-full text-slate-400 transition-colors"
+                                >
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Suggestions Dropdown */}
+                        {showSuggestions && suggestions.length > 0 && (
+                            <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl z-10 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                                {suggestions.map(client => (
+                                    <button
+                                        key={client.id}
+                                        onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            selectClientSuggestion(client);
+                                        }}
+                                        className="w-full px-6 py-4 text-left hover:bg-slate-50 flex items-center justify-between border-b border-slate-100 last:border-0 transition-colors"
+                                    >
+                                        <div>
+                                            <p className="font-bold text-slate-900 tracking-tight">
+                                                {client.legalName || `${client.firstName} ${client.surnames}`}
+                                            </p>
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">
+                                                {client.nif}
+                                            </p>
+                                        </div>
+                                        <ChevronRight size={16} className="text-slate-300" />
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                     {isSearching && <Loader className="w-5 h-5 animate-spin text-indigo-600" />}
                 </div>
@@ -172,7 +311,7 @@ const BajarExpedientes: React.FC = () => {
                                 Seleccionar todos ({searchResults.length})
                             </button>
                             <span className="text-sm text-slate-600">
-                                {selectedCases.size} seleccionado(s)
+                                {selectedCases.size} seleccionado(s) — Mostrando {searchResults.length} de {caseHistory.length} totales
                             </span>
                         </div>
                         <button
@@ -226,11 +365,11 @@ const BajarExpedientes: React.FC = () => {
                                         <span className="font-medium text-slate-900">{caseRecord.fileNumber}</span>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className="font-mono text-slate-700">{caseRecord.client.nif || 'Sin DNI/CIF'}</span>
+                                        <span className="font-mono text-slate-700">{caseRecord.clientSnapshot?.documento || caseRecord.client.nif || (caseRecord.client as any).documento || 'Sin DNI/CIF'}</span>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className="text-slate-700">
-                                            {caseRecord.client.firstName} {caseRecord.client.surnames}
+                                        <span className="text-slate-700 font-medium">
+                                            {getBestClientName(caseRecord.client, caseRecord.clientSnapshot)}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4">

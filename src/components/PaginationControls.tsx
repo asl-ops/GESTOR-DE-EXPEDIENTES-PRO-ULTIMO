@@ -1,13 +1,18 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
+export const PAGE_SIZE_OPTIONS = [25, 50, 100, "all"] as const;
+
+export type PageSize = typeof PAGE_SIZE_OPTIONS[number];
+
 interface PaginationControlsProps {
     currentPage: number;
     totalPages: number;
-    pageSize: number;
+    pageSize: PageSize;
     totalItems: number;
     onPageChange: (page: number) => void;
-    onPageSizeChange: (size: number) => void;
+    onPageSizeChange: (size: PageSize) => void;
+    variant?: 'default' | 'minimal';
 }
 
 const PaginationControls: React.FC<PaginationControlsProps> = ({
@@ -17,96 +22,110 @@ const PaginationControls: React.FC<PaginationControlsProps> = ({
     totalItems,
     onPageChange,
     onPageSizeChange,
+    variant = 'default',
 }) => {
-    const startItem = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-    const endItem = Math.min(currentPage * pageSize, totalItems);
+    // If pageSize is 'all', treat as single page with all items
+    const isAll = pageSize === 'all';
+    const effectivePageSize = isAll ? totalItems : pageSize;
+
+    const startItem = totalItems === 0 ? 0 : isAll ? 1 : (currentPage - 1) * effectivePageSize + 1;
+    const endItem = isAll ? totalItems : Math.min(currentPage * effectivePageSize, totalItems);
+    const effectiveTotalPages = isAll ? 1 : totalPages;
 
     return (
-        <div className="flex items-center justify-between bg-white border-t border-slate-200 px-4 py-3 sm:px-6">
+        <div className={`flex items-center justify-between bg-white px-4 py-3 sm:px-6 ${variant === 'default' ? 'border-t border-slate-100' : ''}`}>
             {/* Left side: Items per page */}
-            <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-700">Mostrar:</span>
+            <div className="flex items-center gap-3">
+                <span className={`text-[10px] uppercase font-normal tracking-widest text-slate-400`}>
+                    Por página
+                </span>
                 <select
                     value={pageSize}
                     onChange={(e) => {
-                        onPageSizeChange(Number(e.target.value));
+                        const val = e.target.value;
+                        const newSize = val === 'all' ? 'all' : Number(val) as PageSize;
+                        onPageSizeChange(newSize);
                         onPageChange(1); // Reset to first page
                     }}
-                    className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-medium focus:ring-2 focus:ring-sky-500 outline-none"
+                    className={`h-9 px-3 border border-slate-200 rounded-xl bg-white text-xs font-normal text-slate-700 outline-none hover:border-sky-300 hover:text-sky-600 transition-all cursor-pointer shadow-sm focus:ring-4 focus:ring-sky-500/5`}
                 >
-                    <option value={25}>25</option>
-                    <option value={50}>50</option>
-                    <option value={100}>100</option>
+                    {PAGE_SIZE_OPTIONS.map(opt => (
+                        <option key={opt} value={opt}>
+                            {opt === 'all' ? 'Todos' : opt}
+                        </option>
+                    ))}
                 </select>
-                <span className="text-sm text-slate-700">por página</span>
             </div>
 
             {/* Center: Item count */}
-            <div className="hidden sm:block">
-                <p className="text-sm text-slate-700">
-                    Mostrando <span className="font-medium">{startItem}</span> a{' '}
-                    <span className="font-medium">{endItem}</span> de{' '}
-                    <span className="font-medium">{totalItems}</span> expedientes
-                </p>
-            </div>
+            {variant === 'default' && (
+                <div className="hidden sm:block">
+                    <p className="text-[10px] uppercase tracking-widest text-slate-400">
+                        Mostrando <span className="text-slate-900 font-normal">{startItem}</span> a{' '}
+                        <span className="text-slate-900 font-normal">{endItem}</span> de{' '}
+                        <span className="text-sky-600 font-normal">{totalItems}</span>
+                    </p>
+                </div>
+            )}
 
             {/* Right side: Page navigation */}
             <div className="flex items-center gap-2">
                 <button
                     onClick={() => onPageChange(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    className={`flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${currentPage === 1
-                            ? 'text-slate-400 cursor-not-allowed'
-                            : 'text-slate-700 hover:bg-slate-100'
+                    disabled={currentPage === 1 || isAll}
+                    className={`flex items-center justify-center size-9 rounded-xl border transition-all ${currentPage === 1 || isAll
+                        ? 'text-slate-200 border-slate-50 cursor-not-allowed'
+                        : 'text-slate-500 border-slate-100 hover:bg-sky-50 hover:text-sky-600 hover:border-sky-100'
                         }`}
                 >
                     <ChevronLeft className="w-4 h-4" />
-                    Anterior
                 </button>
 
                 {/* Page numbers */}
-                <div className="hidden sm:flex items-center gap-1">
-                    {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                        let pageNum;
-                        if (totalPages <= 5) {
-                            pageNum = i + 1;
-                        } else if (currentPage <= 3) {
-                            pageNum = i + 1;
-                        } else if (currentPage >= totalPages - 2) {
-                            pageNum = totalPages - 4 + i;
-                        } else {
-                            pageNum = currentPage - 2 + i;
-                        }
+                {!isAll && (
+                    <div className="hidden sm:flex items-center gap-1">
+                        {Array.from({ length: Math.min(effectiveTotalPages, 5) }, (_, i) => {
+                            let pageNum;
+                            if (effectiveTotalPages <= 5) {
+                                pageNum = i + 1;
+                            } else if (currentPage <= 3) {
+                                pageNum = i + 1;
+                            } else if (currentPage >= effectiveTotalPages - 2) {
+                                pageNum = effectiveTotalPages - 4 + i;
+                            } else {
+                                pageNum = currentPage - 2 + i;
+                            }
 
-                        return (
-                            <button
-                                key={pageNum}
-                                onClick={() => onPageChange(pageNum)}
-                                className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${currentPage === pageNum
-                                        ? 'bg-sky-600 text-white'
-                                        : 'text-slate-700 hover:bg-slate-100'
-                                    }`}
-                            >
-                                {pageNum}
-                            </button>
-                        );
-                    })}
-                </div>
+                            return (
+                                <button
+                                    key={pageNum}
+                                    onClick={() => onPageChange(pageNum)}
+                                    className={`size-9 text-xs font-normal rounded-xl transition-all ${currentPage === pageNum
+                                        ? 'bg-sky-600 text-white shadow-lg shadow-sky-500/20'
+                                        : 'text-slate-500 hover:bg-slate-50'
+                                        }`}
+                                >
+                                    {pageNum}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
 
-                {/* Mobile page indicator */}
-                <div className="sm:hidden px-3 py-1.5 text-sm font-medium text-slate-700">
-                    Página {currentPage} de {totalPages}
-                </div>
+                {isAll && (
+                    <div className="size-9 flex items-center justify-center text-xs font-normal text-sky-600 bg-sky-50 border border-sky-100 rounded-xl">
+                        1
+                    </div>
+                )}
 
                 <button
                     onClick={() => onPageChange(currentPage + 1)}
-                    disabled={currentPage === totalPages || totalPages === 0}
-                    className={`flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${currentPage === totalPages || totalPages === 0
-                            ? 'text-slate-400 cursor-not-allowed'
-                            : 'text-slate-700 hover:bg-slate-100'
+                    disabled={currentPage === effectiveTotalPages || effectiveTotalPages === 0 || isAll}
+                    className={`flex items-center justify-center size-9 rounded-xl border transition-all ${currentPage === effectiveTotalPages || effectiveTotalPages === 0 || isAll
+                        ? 'text-slate-200 border-slate-50 cursor-not-allowed'
+                        : 'text-slate-500 border-slate-100 hover:bg-sky-50 hover:text-sky-600 hover:border-sky-100'
                         }`}
                 >
-                    Siguiente
                     <ChevronRight className="w-4 h-4" />
                 </button>
             </div>

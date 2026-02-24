@@ -1,10 +1,11 @@
 import React, { useState, useCallback } from 'react';
 import { Vehicle } from '../types';
 import { extractVehicleDataFromImage } from '../services/geminiService';
-import { CarIcon, OcrIcon, SpinnerIcon, SaveIcon, LoadIcon } from './icons';
+import { Scan, Zap, Loader2, Car, Copy, FileText } from 'lucide-react';
+import { CopyAction } from './ui/ActionFeedback';
 import { useToast } from '../hooks/useToast';
-import { useAppContext } from '../contexts/AppContext';
 import SavedVehiclesModal from './SavedVehiclesModal';
+import SmartDatePicker from './ui/SmartDatePicker';
 
 interface VehicleDataSectionProps {
   vehicle: Vehicle;
@@ -13,11 +14,15 @@ interface VehicleDataSectionProps {
   onBatchProcess: (files: File[]) => void;
   isBatchProcessing: boolean;
   onDocumentProcessed: (file: File) => void;
+  onGenerateMandate?: () => void;
+  onIntegrateHermes?: () => void;
 }
 
-const VehicleDataSection: React.FC<VehicleDataSectionProps> = ({ vehicle, setVehicle, fileType, onBatchProcess, isBatchProcessing, onDocumentProcessed }) => {
+const VehicleDataSection: React.FC<VehicleDataSectionProps> = ({
+  vehicle, setVehicle, fileType, onBatchProcess, isBatchProcessing,
+  onDocumentProcessed, onGenerateMandate, onIntegrateHermes
+}) => {
   const { addToast } = useToast();
-  const { savedVehicles, saveVehicle } = useAppContext();
   const [isLoadingOcr, setIsLoadingOcr] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -52,7 +57,7 @@ const VehicleDataSection: React.FC<VehicleDataSectionProps> = ({ vehicle, setVeh
       setIsLoadingOcr(false);
     }
   }, [setVehicle, onDocumentProcessed, addToast]);
-  
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
@@ -64,7 +69,7 @@ const VehicleDataSection: React.FC<VehicleDataSectionProps> = ({ vehicle, setVeh
   const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
   const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); };
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); };
-  
+
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -77,18 +82,6 @@ const VehicleDataSection: React.FC<VehicleDataSectionProps> = ({ vehicle, setVeh
     else processFile(validFiles[0]);
   };
 
-  const handleSaveVehicle = useCallback(async () => {
-    if (vehicle.vin && vehicle.brand) {
-      if (!savedVehicles.find(v => v.vin === vehicle.vin)) {
-          const newVehicle = { ...vehicle, id: `veh_${Date.now()}` };
-          await saveVehicle(newVehicle);
-      } else {
-          addToast('Un vehículo con este VIN ya existe.', 'warning');
-      }
-    } else {
-        addToast('Se requiere Nº de Bastidor y Marca para guardar.', 'error');
-    }
-  }, [vehicle, savedVehicles, addToast, saveVehicle]);
 
   const handleSelectAndClose = (selectedVehicle: Vehicle) => {
     setVehicle(selectedVehicle);
@@ -97,25 +90,248 @@ const VehicleDataSection: React.FC<VehicleDataSectionProps> = ({ vehicle, setVeh
 
   const isProcessing = isMultipleMode ? isBatchProcessing : isLoadingOcr;
 
+
+  const [showTechnical, setShowTechnical] = useState(false);
+
+  // Helper for technical inputs
+  const TechnicalInput = ({ label, name, placeholder = '', className = '' }: { label: string, name: keyof Vehicle, placeholder?: string, className?: string }) => (
+    <div className={`space-y-1.5 ${className}`}>
+      <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">{label}</label>
+      <input
+        type="text"
+        name={name}
+        value={vehicle[name] as string || ''}
+        onChange={handleChange}
+        placeholder={placeholder}
+        className="w-full h-10 bg-slate-50 border-none rounded-lg px-3 text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-sky-50 transition-all outline-none"
+      />
+    </div>
+  );
+
   return (
-    <div 
-        className={`bg-white p-6 rounded-xl shadow-md transition-all duration-300 relative border-2 ${isDragging ? 'border-sky-500 border-dashed' : 'border-transparent'}`}
-        onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}
+    <div
+      className={`bg-white p-6 rounded-xl shadow-md transition-all duration-300 relative border-2 ${isDragging ? 'border-sky-500 border-dashed' : 'border-transparent'}`}
+      onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}
     >
-      <div className="flex items-center mb-6"><CarIcon /><h2 className="text-xl font-bold text-slate-900 ml-3">Datos del Vehículo</h2></div>
-      {isDragging && <div className="absolute inset-0 bg-sky-100 bg-opacity-50 flex items-center justify-center rounded-xl pointer-events-none z-10"><p className="text-lg font-semibold text-sky-700">{isMultipleMode ? 'Suelta las fichas técnicas aquí' : 'Suelta la ficha técnica aquí'}</p></div>}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="md:col-span-2"><label className="block text-sm font-medium text-slate-700">Nº de Bastidor (VIN)</label><input type="text" name="vin" value={vehicle.vin} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-sky-500 focus:border-sky-500" /></div>
-        <div><label className="block text-sm font-medium text-slate-700">Marca</label><input type="text" name="brand" value={vehicle.brand} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-sky-500 focus:border-sky-500" /></div>
-        <div><label className="block text-sm font-medium text-slate-700">Modelo</label><input type="text" name="model" value={vehicle.model} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-sky-500 focus:border-sky-500" /></div>
-        <div><label className="block text-sm font-medium text-slate-700">Fecha Matriculación</label><input type="text" name="year" placeholder="DD/MM/AAAA" value={vehicle.year} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-sky-500 focus:border-sky-500" /></div>
-         <div><label className="block text-sm font-medium text-slate-700">Cilindrada (cc)</label><input type="text" name="engineSize" value={vehicle.engineSize} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-sky-500 focus:border-sky-500" /></div>
-        <div><label className="block text-sm font-medium text-slate-700">Combustible</label><input type="text" name="fuelType" value={vehicle.fuelType} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-sky-500 focus:border-sky-500" /></div>
+      <div className="flex items-center mb-6">
+        <div className="p-2 bg-sky-50 text-sky-600 rounded-lg">
+          <Car size={20} />
+        </div>
+        <h2 className="text-sm font-bold text-slate-800 uppercase tracking-widest ml-3">Datos del Vehículo</h2>
       </div>
-      <div className="mt-6 border-t border-slate-200 pt-6 flex flex-col sm:flex-row gap-3">
-        <label title="Leer datos desde Ficha Técnica" className="relative flex-1 cursor-pointer bg-sky-600 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center hover:bg-sky-700">{isProcessing ? <SpinnerIcon /> : <OcrIcon />}<span className="ml-2">{isProcessing ? (isMultipleMode ? 'Procesando Lote...' : 'Procesando Ficha...') : (isMultipleMode ? 'Leer Fichas Técnicas (OCR)' : 'Leer Ficha Técnica (OCR)')}</span><input type="file" className="sr-only" onChange={handleFileChange} accept="image/*,application/pdf" disabled={isProcessing} multiple={isMultipleMode}/></label>
-        <button onClick={() => setIsModalOpen(true)} className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-2 px-4 rounded-lg flex items-center justify-center"><LoadIcon /><span className="ml-2">Cargar Vehículo</span></button>
-        <button onClick={handleSaveVehicle} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center"><SaveIcon /><span className="ml-2">Guardar Vehículo</span></button>
+      {isDragging && <div className="absolute inset-0 bg-sky-100 bg-opacity-50 flex items-center justify-center rounded-xl pointer-events-none z-10"><p className="text-lg font-semibold text-sky-700">{isMultipleMode ? 'Suelta las fichas técnicas aquí' : 'Suelta la ficha técnica aquí'}</p></div>}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
+        {/* Fila 1: VIN + Matrícula */}
+        <div className="space-y-1.5">
+          <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Nº de Bastidor (VIN)</label>
+          <div className="relative group/vin">
+            <input
+              type="text"
+              name="vin"
+              value={vehicle.vin}
+              onChange={handleChange}
+              className="w-full h-11 bg-slate-50 border-none rounded-xl pl-4 pr-12 text-sm font-medium text-slate-900 focus:bg-white focus:ring-4 focus:ring-sky-50 transition-all outline-none"
+            />
+            <CopyAction text={vehicle.vin}>
+              <div
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-300 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-all"
+                title="Copiar VIN"
+              >
+                <Copy size={16} />
+              </div>
+            </CopyAction>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Matrícula actual</label>
+          <input
+            type="text"
+            name="plate"
+            value={vehicle.plate || ''}
+            onChange={handleChange}
+            placeholder="0000XXX"
+            className="w-full h-11 bg-slate-50 border-none rounded-xl px-4 text-sm font-medium text-slate-900 focus:bg-white focus:ring-4 focus:ring-sky-50 transition-all outline-none uppercase font-mono tracking-widest"
+          />
+        </div>
+
+        {/* Fila 2: Marca + Modelo */}
+        <div className="space-y-1.5">
+          <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Marca</label>
+          <input
+            type="text"
+            name="brand"
+            value={vehicle.brand}
+            onChange={handleChange}
+            className="w-full h-11 bg-slate-50 border-none rounded-xl px-4 text-sm font-medium text-slate-900 focus:bg-white focus:ring-4 focus:ring-sky-50 transition-all outline-none"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Modelo</label>
+          <input
+            type="text"
+            name="model"
+            value={vehicle.model}
+            onChange={handleChange}
+            className="w-full h-11 bg-slate-50 border-none rounded-xl px-4 text-sm font-medium text-slate-900 focus:bg-white focus:ring-4 focus:ring-sky-50 transition-all outline-none"
+          />
+        </div>
+
+        {/* Fila 3: Fecha + Combustible */}
+        <div className="space-y-1.5">
+          <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Fecha Matriculación</label>
+          <SmartDatePicker
+            value={vehicle.year}
+            onChange={(val) => setVehicle(prev => ({ ...prev, year: val }))}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Tipo de combustible</label>
+          <select
+            name="fuelType"
+            value={vehicle.fuelType}
+            onChange={(e) => handleChange(e as any)}
+            className="w-full h-11 bg-slate-50 border-none rounded-xl px-4 text-sm font-medium text-slate-900 focus:bg-white focus:ring-4 focus:ring-sky-50 transition-all outline-none appearance-none"
+          >
+            <option value="">Seleccionar...</option>
+            <option value="gasolina">Gasolina</option>
+            <option value="diésel">Diésel</option>
+            <option value="híbrido">Híbrido</option>
+            <option value="eléctrico">Eléctrico</option>
+            <option value="GLP">GLP</option>
+            <option value="GNC">GNC</option>
+          </select>
+        </div>
+
+        {/* Fila 4: Potencia + Emisiones */}
+        <div className="space-y-1.5">
+          <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Potencia (kW/CV)</label>
+          <input
+            type="text"
+            name="power"
+            value={vehicle.power || ''}
+            onChange={handleChange}
+            className="w-full h-11 bg-slate-50 border-none rounded-xl px-4 text-sm font-medium text-slate-900 focus:bg-white focus:ring-4 focus:ring-sky-50 transition-all outline-none"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Emisiones CO₂ (g/km)</label>
+          <input
+            type="text"
+            name="emissions"
+            value={vehicle.emissions || ''}
+            onChange={handleChange}
+            className="w-full h-11 bg-slate-50 border-none rounded-xl px-4 text-sm font-medium text-slate-900 focus:bg-white focus:ring-4 focus:ring-sky-50 transition-all outline-none"
+          />
+        </div>
+      </div>
+
+      {/* Advanced Technical Data Toggle */}
+      <div className="mt-8 border-t border-slate-100 pt-4">
+        <button
+          onClick={() => setShowTechnical(!showTechnical)}
+          className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-sky-600 transition-colors uppercase tracking-wider"
+        >
+          <Zap size={14} className={showTechnical ? 'text-sky-500 fill-sky-500' : ''} />
+          Datos Técnicos Avanzados (Ficha Técnica)
+        </button>
+
+        {showTechnical && (
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-6 animate-in fade-in slide-in-from-top-2 duration-300">
+
+            {/* Bloque 1: Clasificación */}
+            <div className="md:col-span-3 pb-2 border-b border-slate-50 mb-2">
+              <h4 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4">Clasificación y Homologación</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <TechnicalInput label="Clasificación (CL)" name="classCode" placeholder="2011" />
+                <TechnicalInput label="Tipo (J)" name="type" placeholder="20" />
+                <TechnicalInput label="Carrocería (J.2)" name="bodywork" placeholder="BA" />
+                <TechnicalInput label="Cat. Homologación" name="euroCategory" placeholder="N1" />
+                <TechnicalInput label="Nº Homologación (K)" name="homologationNumber" className="md:col-span-2" />
+
+                <div className="space-y-1.5 md:col-span-2">
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Fecha Homologación</label>
+                  <SmartDatePicker
+                    value={vehicle.homologationDate || ''}
+                    onChange={(val) => setVehicle(prev => ({ ...prev, homologationDate: val }))}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Bloque 2: Masas y Dimensiones */}
+            <div className="md:col-span-3 pb-2 border-b border-slate-50 mb-2">
+              <h4 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4">Masas y Dimensiones</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <TechnicalInput label="Tara (G)" name="tara" placeholder="kg" />
+                <TechnicalInput label="Masa Orden Marcha" name="massInOrder" placeholder="kg" />
+                <TechnicalInput label="MMA (F.2)" name="mma" placeholder="kg" />
+                <TechnicalInput label="MMTA (F.1)" name="technicalMma" placeholder="kg" />
+
+                <TechnicalInput label="Longitud" name="length" placeholder="mm" />
+                <TechnicalInput label="Anchura" name="width" placeholder="mm" />
+                <TechnicalInput label="Altura" name="height" placeholder="mm" />
+                <TechnicalInput label="Distancia Ejes" name="wheelbase" placeholder="mm" />
+              </div>
+            </div>
+
+            {/* Bloque 3: ITV e Inspección */}
+            <div className="md:col-span-3">
+              <h4 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4">Datos ITV</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <TechnicalInput label="Código ITV" name="itvCode" placeholder="BA02" />
+                <TechnicalInput label="Nº Serie ITV" name="itvSerialNumber" />
+                <TechnicalInput label="Potencia Neta (P.2)" name="maxNetPower" placeholder="kW" />
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Válidez ITV</label>
+                  <SmartDatePicker
+                    value={vehicle.itvExpiration || ''}
+                    onChange={(val) => setVehicle(prev => ({ ...prev, itvExpiration: val }))}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Bloque 4: Checkboxes */}
+            <div className="md:col-span-3 flex gap-6 pt-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={vehicle.isImported} onChange={(e) => setVehicle(prev => ({ ...prev, isImported: e.target.checked }))} className="rounded text-sky-600 focus:ring-sky-500" />
+                <span className="text-xs font-bold text-slate-600 uppercase">Vehículo Importado</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={vehicle.isUsed} onChange={(e) => setVehicle(prev => ({ ...prev, isUsed: e.target.checked }))} className="rounded text-sky-600 focus:ring-sky-500" />
+                <span className="text-xs font-bold text-slate-600 uppercase">Vehículo Usado</span>
+              </label>
+            </div>
+
+          </div>
+        )}
+      </div>
+      <div className="mt-6 border-t border-slate-100 pt-6 flex flex-col sm:flex-row gap-4">
+        <label title="Leer datos desde Ficha Técnica" className="flex-1 relative cursor-pointer group">
+          <div className="h-11 bg-white border border-slate-200 text-slate-600 font-semibold rounded-xl flex items-center justify-center gap-2 hover:bg-slate-50 hover:border-slate-300 transition-all active:scale-95">
+            {isProcessing ? <Loader2 size={18} className="animate-spin" /> : <Scan size={18} />}
+            <span className="text-[11px] uppercase tracking-wider">
+              {isProcessing ? 'Procesando...' : 'Ficha Técnica (OCR)'}
+            </span>
+          </div>
+          <input type="file" className="sr-only" onChange={handleFileChange} accept="image/*,application/pdf" disabled={isProcessing} multiple={isMultipleMode} />
+        </label>
+
+        <button
+          onClick={onGenerateMandate}
+          className="flex-1 h-11 bg-white border border-slate-200 text-slate-600 font-semibold rounded-xl flex items-center justify-center gap-2 hover:bg-slate-50 hover:border-slate-300 transition-all active:scale-95"
+        >
+          <FileText size={18} />
+          <span className="text-[11px] uppercase tracking-wider">Generar Mandato</span>
+        </button>
+
+        <button
+          onClick={onIntegrateHermes || (() => addToast('Integración HERMES-DGT próximamente', 'info'))}
+          className="flex-1 h-11 bg-white border border-slate-200 text-slate-600 font-semibold rounded-xl flex items-center justify-center gap-2 hover:bg-slate-50 hover:border-slate-300 transition-all active:scale-95"
+        >
+          <Zap size={18} />
+          <span className="text-[11px] uppercase tracking-wider">Integración HERMES-DGT</span>
+        </button>
       </div>
       <SavedVehiclesModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSelect={handleSelectAndClose} />
     </div>

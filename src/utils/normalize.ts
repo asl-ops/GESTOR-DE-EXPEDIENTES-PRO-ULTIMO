@@ -35,8 +35,9 @@ export function normalizeTelefono(v?: string): string | undefined {
  * Detecta si un string es mayormente numérico
  */
 export function isMostlyNumeric(v: string): boolean {
-    const s = v.replace(/\s/g, "");
-    return s.length > 0 && /^[0-9]+$/.test(s);
+    const s = v.replace(/\s|-/g, "").toUpperCase();
+    // Documentos: o todo números (DNI), o letra + números (CIF)
+    return s.length > 0 && /^[A-Z0-9][0-9]*$/.test(s);
 }
 
 /**

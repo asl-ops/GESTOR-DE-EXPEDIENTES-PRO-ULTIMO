@@ -1,10 +1,11 @@
 
 import React, { useState } from 'react';
 import { Task, User, FileConfig, AttachedDocument, Client } from '../types';
-import { ClipboardListIcon, PlusCircleIcon, TrashIcon, SparklesIcon, SpinnerIcon } from './icons';
 import { suggestTasks } from '../services/geminiService';
 import TaskSuggestionModal from './TaskSuggestionModal';
 import { useToast } from '../hooks/useToast';
+import ConfirmationModal from './ConfirmationModal';
+import { CheckSquare, Sparkles, Plus, Trash2, RefreshCcw, Check, CheckCircle } from 'lucide-react';
 
 interface TasksSectionProps {
   tasks: Task[];
@@ -17,24 +18,12 @@ interface TasksSectionProps {
   client: Client;
 }
 
-const UserAvatar: React.FC<{ userId: string; users: User[] }> = ({ userId, users }) => {
-  const user = users.find(u => u.id === userId);
-  if (!user) return null;
-  return (
-    <span
-      title={user.name}
-      className={`flex-shrink-0 flex items-center justify-center h-6 w-6 rounded-full text-white text-xs font-bold ${user.avatarColor}`}
-    >
-      {user.initials}
-    </span>
-  );
-};
-
-const TasksSection: React.FC<TasksSectionProps> = ({ tasks, setTasks, users, currentUser, caseResponsibleUserId, attachments, fileConfig }) => {
+const TasksSection: React.FC<TasksSectionProps> = ({ tasks = [], setTasks, users = [], currentUser, caseResponsibleUserId, attachments, fileConfig }) => {
   const [newTaskText, setNewTaskText] = useState('');
   const [assignedTo, setAssignedTo] = useState(caseResponsibleUserId);
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [suggestions, setSuggestions] = useState<string[] | null>(null);
+  const [taskToDeleteId, setTaskToDeleteId] = useState<string | null>(null);
   const { addToast } = useToast();
 
   const handleAddTask = () => {
@@ -49,7 +38,7 @@ const TasksSection: React.FC<TasksSectionProps> = ({ tasks, setTasks, users, cur
     };
     setTasks(prev => [newTask, ...prev]);
     setNewTaskText('');
-    setAssignedTo(caseResponsibleUserId); // Reset to default responsible
+    setAssignedTo(caseResponsibleUserId);
   };
 
   const handleToggleTask = (taskId: string) => {
@@ -61,7 +50,14 @@ const TasksSection: React.FC<TasksSectionProps> = ({ tasks, setTasks, users, cur
   };
 
   const handleRemoveTask = (taskId: string) => {
-    setTasks(prev => prev.filter(task => task.id !== taskId));
+    setTaskToDeleteId(taskId);
+  };
+
+  const confirmDeleteTask = () => {
+    if (taskToDeleteId) {
+      setTasks(prev => prev.filter(task => task.id !== taskToDeleteId));
+      setTaskToDeleteId(null);
+    }
   };
 
   const getCreationInfo = (task: Task) => {
@@ -101,83 +97,108 @@ const TasksSection: React.FC<TasksSectionProps> = ({ tasks, setTasks, users, cur
   };
 
   return (
-    <div className="bg-white p-6 rounded-xl shadow-md">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center">
-          <ClipboardListIcon />
-          <h2 className="text-xl font-bold text-slate-900 ml-3">Tareas y Anotaciones</h2>
-        </div>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-[#111418] text-base font-bold flex items-center gap-2">
+          <CheckSquare className="w-5 h-5 text-emerald-500" /> Tareas del Expediente
+        </h3>
         <button
           onClick={handleSuggestTasks}
           disabled={isSuggesting}
-          className="bg-indigo-100 text-indigo-700 hover:bg-indigo-200 font-bold p-2 rounded-lg transition-colors duration-200 flex items-center justify-center disabled:opacity-50"
-          title="Sugerir Tareas con IA"
+          className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-indigo-100 transition-all disabled:opacity-50"
         >
-          {isSuggesting ? <SpinnerIcon /> : <SparklesIcon className="h-6 w-6" />}
+          {isSuggesting ? <RefreshCcw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Sugerir con IA
         </button>
       </div>
 
-      <div className="space-y-4">
-        {/* Input for new task */}
-        <div className="flex items-start space-x-2">
-          <textarea
-            rows={2}
-            value={newTaskText}
-            onChange={e => setNewTaskText(e.target.value)}
-            placeholder="Añadir nueva tarea o anotación..."
-            className="flex-grow px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-sky-500 focus:border-sky-500 text-sm"
-          />
+      <div className="bg-[#f8f9fa] border border-[#f0f2f4] rounded-2xl p-6 space-y-4">
+        <div className="flex gap-4">
+          <div className="flex-1">
+            <textarea
+              value={newTaskText}
+              onChange={e => setNewTaskText(e.target.value)}
+              placeholder="¿Qué falta por hacer?..."
+              className="w-full bg-white border border-[#dbe0e6] rounded-xl p-4 text-sm font-medium text-[#111418] outline-none focus:border-[#1380ec] transition-all resize-none h-20"
+            />
+          </div>
           <button
             onClick={handleAddTask}
-            className="bg-sky-600 hover:bg-sky-700 text-white font-bold p-2 rounded-lg h-full flex items-center"
-            aria-label="Añadir Tarea"
+            disabled={!newTaskText.trim()}
+            className="w-12 h-12 flex items-center justify-center bg-[#1380ec] text-white rounded-xl hover:bg-blue-600 transition-all shadow-sm active:scale-95 disabled:opacity-50"
           >
-            <PlusCircleIcon />
+            <Plus className="w-6 h-6" />
           </button>
         </div>
-        <div className="flex items-center space-x-2">
-          <label className="text-sm font-medium text-slate-700">Asignar a:</label>
-          <select
-            value={assignedTo}
-            onChange={e => setAssignedTo(e.target.value)}
-            className="bg-white border border-slate-300 rounded-md py-1 pl-2 pr-8 text-sm focus:outline-none focus:ring-sky-500 focus:border-sky-500"
-          >
-            {users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
-          </select>
+
+        <div className="flex items-center gap-4 border-t border-[#f0f2f4] pt-4">
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Responsable:</span>
+          <div className="flex items-center gap-2">
+            <select
+              value={assignedTo}
+              onChange={e => setAssignedTo(e.target.value)}
+              className="bg-transparent border-none p-0 text-xs font-bold text-[#111418] focus:ring-0 cursor-pointer"
+            >
+              {users?.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
+            </select>
+          </div>
         </div>
       </div>
 
-      <div className="mt-6 border-t border-slate-200 pt-4 space-y-3">
-        {tasks.length > 0 ? (
-          tasks.map(task => (
-            <div key={task.id} className={`flex items-start space-x-3 p-2 rounded-md transition-colors ${task.isCompleted ? 'bg-slate-100' : ''}`}>
-              <input
-                type="checkbox"
-                checked={task.isCompleted}
-                onChange={() => handleToggleTask(task.id)}
-                className="mt-1 h-5 w-5 rounded border-slate-400 text-sky-600 focus:ring-sky-500 cursor-pointer"
-              />
-              <div className="flex-grow">
-                <p className={`text-sm text-slate-800 ${task.isCompleted ? 'line-through text-slate-500' : ''}`}>
-                  {task.text}
-                </p>
-                <p className="text-xs text-slate-500 mt-1">{getCreationInfo(task)}</p>
+      <div className="space-y-3">
+        {tasks?.map(task => (
+          <div key={task.id} className={`group flex items-center justify-between p-4 rounded-xl border transition-all ${task.isCompleted ? 'bg-slate-50 border-transparent opacity-60' : 'bg-white border-[#f0f2f4] hover:shadow-sm'}`}>
+            <div className="flex items-center gap-4 flex-1">
+              <button
+                onClick={() => handleToggleTask(task.id)}
+                className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${task.isCompleted ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-[#dbe0e6] text-transparent hover:border-emerald-500'}`}
+              >
+                <Check className="w-3.5 h-3.5" />
+              </button>
+              <div className="flex-1">
+                <p className={`text-sm font-bold ${task.isCompleted ? 'text-[#617589] line-through' : 'text-[#111418]'}`}>{task.text}</p>
+                <p className="text-[10px] font-medium text-[#617589] uppercase tracking-tighter mt-0.5">{getCreationInfo(task)}</p>
               </div>
-              <UserAvatar userId={task.assignedToUserId} users={users} />
-              <button onClick={() => handleRemoveTask(task.id)} className="text-slate-400 hover:text-red-500">
-                <TrashIcon />
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div title={`Asignado a: ${users.find(u => u.id === task.assignedToUserId)?.name}`} className={`w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-[9px] font-black text-slate-500 uppercase border border-slate-200`}>
+                {users.find(u => u.id === task.assignedToUserId)?.initials || '??'}
+              </div>
+              <button
+                onClick={() => handleRemoveTask(task.id)}
+                className="opacity-0 group-hover:opacity-100 p-2 text-slate-300 hover:text-red-500 transition-all"
+              >
+                <Trash2 className="w-4 h-4" />
               </button>
             </div>
-          ))
-        ) : (
-          <p className="text-center text-slate-500 text-sm py-4">No hay tareas pendientes.</p>
+          </div>
+        ))}
+
+        {tasks?.length === 0 && (
+          <div className="py-12 border-2 border-dashed border-[#f0f2f4] rounded-2xl flex flex-col items-center justify-center space-y-3">
+            <CheckCircle className="w-8 h-8 text-slate-200" />
+            <p className="text-sm font-medium text-slate-400 italic">No hay tareas pendientes</p>
+            <button onClick={() => setSuggestions([])} className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline">+ Crear Primera Tarea</button>
+          </div>
         )}
       </div>
+
       <TaskSuggestionModal
         isOpen={!!suggestions}
         suggestions={suggestions || []}
         onClose={() => setSuggestions(null)}
         onAddTasks={handleAddSuggestedTasks}
+      />
+
+      <ConfirmationModal
+        isOpen={!!taskToDeleteId}
+        onClose={() => setTaskToDeleteId(null)}
+        onConfirm={confirmDeleteTask}
+        title="Eliminar tarea"
+        message="¿Estás seguro de que deseas eliminar esta tarea? Esta acción no se puede deshacer."
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+        variant="danger"
       />
     </div>
   );

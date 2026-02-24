@@ -18,12 +18,14 @@ interface ClientDataSectionProps {
     documento?: string;
     telefono?: string;
     email?: string;
+    cuentaContable?: string;
   } | null;
   setClientSnapshot?: (snapshot: {
     nombre: string;
     documento?: string;
     telefono?: string;
     email?: string;
+    cuentaContable?: string;
   } | null) => void;
 }
 
@@ -119,6 +121,7 @@ const ClientDataSection: React.FC<ClientDataSectionProps> = ({
         documento: selectedClient.documento || null,
         telefono: selectedClient.telefono || null,
         email: selectedClient.email || null,
+        cuentaContable: selectedClient.cuentaContable || null,
       } as any);
     }
 
@@ -127,14 +130,10 @@ const ClientDataSection: React.FC<ClientDataSectionProps> = ({
       ...prev,
       id: selectedClient.id,
       nif: selectedClient.documento || '',
-      // Para clientes del sistema nuevo, el "nombre" puede ser completo o separado
-      // Intentamos parsearlo si es formato "APELLIDOS, NOMBRE"
-      surnames: selectedClient.nombre.includes(',')
-        ? selectedClient.nombre.split(',')[0].trim()
-        : selectedClient.nombre,
-      firstName: selectedClient.nombre.includes(',')
-        ? selectedClient.nombre.split(',')[1]?.trim() || ''
-        : '',
+      nombre: selectedClient.nombre,
+      // We keep these for backward compatibility where some components still use them
+      surnames: selectedClient.surnames || selectedClient.nombre,
+      firstName: selectedClient.firstName || '',
       phone: selectedClient.telefono || '',
       email: selectedClient.email || '',
       // Mantener campos actuales si no hay datos
@@ -157,6 +156,7 @@ const ClientDataSection: React.FC<ClientDataSectionProps> = ({
     // También limpiar el objeto client antiguo
     setClient({
       id: '',
+      nombre: '',
       surnames: '',
       firstName: '',
       nif: '',

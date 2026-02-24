@@ -3,6 +3,7 @@ import { CaseRecord, getCaseStatusBadgeColor } from '../types';
 import { UserIcon, CarIcon } from './icons';
 import { FolderOpen, Copy, Trash2 } from 'lucide-react';
 import { getStatusColorClasses } from '../utils/statusColors';
+import { Button } from './ui/Button';
 
 interface ExpedienteCardProps {
   caseRecord: CaseRecord;
@@ -37,8 +38,9 @@ const ExpedienteCard: React.FC<ExpedienteCardProps> = ({
           <div>
             <p className="font-semibold text-slate-800">
               {caseRecord.clientSnapshot?.nombre ||
-                `${client.surnames}${client.firstName ? `, ${client.firstName}` : ''}` ||
-                '—'}
+                client.nombre ||
+                `${client.surnames || ''}${client.firstName ? `, ${client.firstName}` : ''}`.trim() ||
+                'Sin Titular'}
             </p>
             <p className="text-slate-500">
               {caseRecord.clientSnapshot?.documento || client.nif || '—'}
@@ -59,38 +61,44 @@ const ExpedienteCard: React.FC<ExpedienteCardProps> = ({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             {/* Abrir expediente (unifica Ver y Editar) */}
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => onSelectCase(caseRecord)}
               disabled={status === 'Cerrado'}
-              className={`p-2 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors ${status === 'Cerrado' ? 'opacity-40 cursor-not-allowed' : ''}`}
               title={status === 'Cerrado' ? 'Expediente cerrado: reabrir para editar' : 'Abrir expediente'}
-            >
-              <FolderOpen className="w-5 h-5" />
-            </button>
+              className="text-sky-600 hover:bg-sky-50"
+              icon={FolderOpen}
+            />
 
             {/* Duplicar expediente */}
             {onDuplicate && (
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={(e) => {
                   e.stopPropagation();
                   onDuplicate(caseRecord);
                 }}
-                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                 title="Duplicar expediente"
-              >
-                <Copy className="w-5 h-5" />
-              </button>
+                className="text-blue-600 hover:bg-blue-50"
+                icon={Copy}
+              />
             )}
           </div>
 
           {/* Eliminar */}
-          <button
-            onClick={(e) => { e.stopPropagation(); onDelete(fileNumber); }}
-            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(fileNumber);
+            }}
             title="Eliminar expediente"
-          >
-            <Trash2 className="w-5 h-5" />
-          </button>
+            className="text-red-600 hover:bg-red-50"
+            icon={Trash2}
+          />
         </div>
       </div>
     </div>

@@ -9,6 +9,7 @@ interface GenerateMandateModalProps {
     isOpen: boolean;
     onClose: () => void;
     client: Client;
+    clientSnapshot?: { nombre: string; documento?: string; telefono?: string; email?: string; } | null;
     fileNumber: string;
     defaultAsunto: string;
     mandateData: MandateData | null;
@@ -20,6 +21,7 @@ const GenerateMandateModal: React.FC<GenerateMandateModalProps> = ({
     isOpen,
     onClose,
     client,
+    clientSnapshot,
     fileNumber,
     defaultAsunto,
     mandateData,
@@ -94,41 +96,101 @@ const GenerateMandateModal: React.FC<GenerateMandateModalProps> = ({
                 printWindow.document.head.appendChild(style);
             } catch (e) { console.warn('Could not copy stylesheet:', e); }
         });
-
-        // Estilos específicos de impresión
-        const printStyle = printWindow.document.createElement('style');
-        printStyle.textContent = `
-            @media print {
-                body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-                @page { margin: 0; }
-            }
-            body { margin: 0; background-color: #f1f5f9; }
-            #print-root { display: flex; justify-content: center; padding: 20px; }
-        `;
-        printWindow.document.head.appendChild(printStyle);
         printWindow.document.close();
 
         printWindow.onload = () => {
             const printRootEl = printWindow.document.getElementById('print-root');
             if (!printRootEl) { printWindow.close(); return; }
 
-            // Importar dinámicamente ReactDOM si es necesario, o usar el importado arriba
+            // Estilos específicos de impresión (Mejorados)
+            const printStyle = printWindow.document.createElement('style');
+            printStyle.textContent = `
+                @media screen {
+                    body { 
+                        margin: 0; 
+                        background-color: #f1f5f9; 
+                        display: flex; 
+                        justify-content: center; 
+                        padding: 40px 20px;
+                    }
+                    .print-page {
+                        width: 210mm;
+                        min-height: 297mm;
+                        background: white;
+                        box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1);
+                        border-radius: 4px;
+                        overflow: hidden;
+                        transform-origin: top center;
+                    }
+                }
+
+                @media print {
+                    @page {
+                        size: A4;
+                        margin: 12mm;
+                    }
+                    html, body {
+                        width: 210mm;
+                        height: 297mm;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background: #fff !important;
+                        overflow: visible !important;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+                    /* Forzar ocupación total del área imprimible */
+                    .print-page {
+                        width: 100% !important;
+                        height: auto !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        box-shadow: none !important;
+                        border-radius: 0 !important;
+                        overflow: visible !important;
+                        transform: none !important;
+                        zoom: 1 !important;
+                        max-width: none !important;
+                    }
+                    /* Anular padding del documento para que use el margen de @page */
+                    #mandate-content {
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        width: 100% !important;
+                        max-width: none !important;
+                        background: transparent !important;
+                    }
+                    /* Asegurar que el contenedor raíz no restrinja */
+                    #print-root {
+                        width: 100% !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                    }
+                    /* Ocultar elementos innecesarios */
+                    body > *:not(#print-root), 
+                    #print-root > *:not(.print-page) {
+                        display: none !important;
+                    }
+                    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                }
+            `;
+            printWindow.document.head.appendChild(printStyle);
+
             import('react-dom/client').then(({ createRoot }) => {
                 const root = createRoot(printRootEl);
                 root.render(
                     <React.StrictMode>
-                        <div style={{ backgroundColor: 'white', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}>
+                        <div className="print-page">
                             <MandateDocument data={previewData} />
                         </div>
                     </React.StrictMode>
                 );
 
-                // Esperar un poco para asegurar que se renderice antes de imprimir
+                // Disparo de impresión (sin auto-escalado agresivo)
                 setTimeout(() => {
                     printWindow.focus();
                     printWindow.print();
-                    // Opcional: printWindow.close(); // El usuario puede querer mantenerla abierta
-                }, 500);
+                }, 800);
             });
         };
     };
@@ -170,13 +232,15 @@ const GenerateMandateModal: React.FC<GenerateMandateModalProps> = ({
                         <div className="grid grid-cols-2 gap-3 text-sm">
                             <div>
                                 <span className="text-slate-600">Nombre:</span>{' '}
-                                <span className="font-medium text-slate-900">
-                                    {client.firstName} {client.surnames}
+                                <span className="font-medium text-slate-900 uppercase">
+                                    {(client.firstName || client.surnames) ? `${client.firstName} ${client.surnames}` : clientSnapshot?.nombre}
                                 </span>
                             </div>
                             <div>
                                 <span className="text-slate-600">DNI/NIF:</span>{' '}
-                                <span className="font-medium text-slate-900">{client.nif}</span>
+                                <span className="font-medium text-slate-900 uppercase">
+                                    {client.nif || clientSnapshot?.documento || '—'}
+                                </span>
                             </div>
                             <div className="col-span-2">
                                 <span className="text-slate-600">Expediente:</span>{' '}

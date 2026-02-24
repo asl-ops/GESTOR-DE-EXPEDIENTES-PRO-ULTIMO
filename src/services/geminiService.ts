@@ -168,10 +168,16 @@ export const classifyAndRenameDocument = async (
     const clientIdentifier = (client.nif || client.surnames || "CLIENTE").replace(/[^a-zA-Z0-9]/g, "");
     const extension = file.name.split('.').pop() || "pdf";
 
-    return `${fileNumber}_${clientIdentifier}_${docType}.${extension}`;
+    return {
+      name: `${fileNumber}_${clientIdentifier}_${docType}.${extension}`,
+      category: docType.replace(/_/g, " ")
+    };
   } catch (error) {
     console.error("Error en classifyAndRenameDocument:", error);
-    return file.name;
+    return {
+      name: file.name,
+      category: "Otro Documento"
+    };
   }
 };
 

@@ -1,11 +1,13 @@
 
 
 import React, { createContext, useState, useCallback, useEffect, ReactNode, useContext } from 'react';
-import { CaseRecord, Client, User, EconomicTemplates, AppSettings, Vehicle } from '@/types';
+import { CaseRecord, Client, User, EconomicTemplates, AppSettings, Vehicle, DEFAULT_THEME } from '@/types';
 import * as db from '@/services/firestoreService';
-import { getUsers } from '@/services/userService';
+import { getUsers, saveUser as apiSaveUser } from '@/services/userService';
 import { initializeAuth } from '@/services/firebase';
 import { useToast } from '@/hooks/useToast';
+import { onSnapshot, collection } from 'firebase/firestore';
+import { db as firestoreDb } from '@/services/firebase';
 
 
 interface AppContextType {
@@ -29,6 +31,7 @@ interface AppContextType {
   updateEconomicTemplates: (templates: EconomicTemplates) => Promise<void>;
   updateCaseHistory: (updatedHistory: CaseRecord[]) => void;
   saveMultipleCases: (newCases: CaseRecord[]) => Promise<CaseRecord[] | null>;
+  saveUser: (user: User) => Promise<void>;
 }
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -110,12 +113,53 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     };
     loadInitialData();
+
+    // 🆕 Suscripción en tiempo real para Expedientes
+    const unsubscribeCases = onSnapshot(collection(firestoreDb, 'cases'), (snapshot) => {
+      const history = snapshot.docs.map(doc => doc.data() as CaseRecord);
+      // Ordenar por fecha de actualización para que el dashboard sea consistente
+      const sortedHistory = history.sort((a, b) =>
+        new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
+      );
+      setCaseHistory(sortedHistory);
+    }, (error) => {
+      console.error("Error in cases subscription:", error);
+    });
+
+    return () => {
+      unsubscribeCases();
+    };
   }, []);
+
+  // Efecto para aplicar tema visual
+  useEffect(() => {
+    const theme = appSettings?.uiTheme || DEFAULT_THEME;
+    const root = document.documentElement;
+
+    // Mapeo de pesos a valores CSS
+    const weightMap: Record<string, string> = {
+      'font-normal': '400',
+      'font-medium': '500',
+      'font-semibold': '600',
+      'font-bold': '700'
+    };
+
+    root.style.setProperty('--corporate-accent', theme.corporateAccent);
+    root.style.setProperty('--label-text-color', theme.labelTextColor);
+    root.style.setProperty('--value-text-color', theme.valueTextColor);
+    root.style.setProperty('--label-weight', weightMap[theme.labelWeight] || '400');
+    root.style.setProperty('--value-weight', weightMap[theme.valueWeight] || '400');
+    root.style.setProperty('--divider-color', theme.dividerColor);
+    root.style.setProperty('--divider-opacity', theme.dividerOpacity.toString());
+    root.style.setProperty('--active-tab-indicator-color', theme.activeTabIndicatorColor);
+    root.style.setProperty('--active-tab-indicator-height', `${theme.activeTabIndicatorHeight}px`);
+    root.style.setProperty('--active-tab-indicator-radius', `${theme.activeTabIndicatorRadius}px`);
+  }, [appSettings?.uiTheme]);
 
   const saveCase = useCallback(async (caseRecord: CaseRecord) => {
     try {
-      const { updatedHistory, isNew } = await db.saveOrUpdateCase(caseRecord);
-      setCaseHistory(updatedHistory);
+      const { isNew } = await db.saveOrUpdateCase(caseRecord);
+      // No necesitamos setCaseHistory, onSnapshot se encarga
       addToast(`Expediente ${caseRecord.fileNumber} ${isNew ? 'guardado' : 'actualizado'}.`, 'success');
       return { success: true, isNew };
     } catch (error) {
@@ -196,15 +240,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [addToast]);
 
 
-  const value: AppContextType = {
-    caseHistory, savedClients, savedVehicles, users, currentUser, appSettings,
-    economicTemplates, isLoading, initializationError, setCurrentUser,
-    saveCase, deleteCase, saveClient, deleteClient, saveVehicle,
-    updateSettings, updateEconomicTemplates, updateCaseHistory: setCaseHistory,
-    saveMultipleCases,
+  const saveUser = async (user: User) => {
+    try {
+      const updatedUsers = await apiSaveUser(user);
+      setUsers(updatedUsers);
+      addToast('Usuario guardado correctamente', 'success');
+    } catch (error) {
+      console.error("Error saving user:", error);
+      addToast('Error al guardar el usuario', 'error');
+    }
   };
 
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  return (
+    <AppContext.Provider value={{
+      caseHistory,
+      savedClients,
+      savedVehicles,
+      users,
+      currentUser,
+      appSettings,
+      economicTemplates,
+      isLoading,
+      initializationError,
+      setCurrentUser,
+      saveCase,
+      deleteCase,
+      saveClient,
+      deleteClient,
+      saveVehicle,
+      updateSettings,
+      updateEconomicTemplates,
+      updateCaseHistory: setCaseHistory,
+      saveMultipleCases,
+      saveUser,
+    }}>
+      {children}
+    </AppContext.Provider>
+  );
 };
 
 export const useAppContext = () => {

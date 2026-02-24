@@ -10,29 +10,20 @@ export const useHashRouter = () => {
         return () => window.removeEventListener('hashchange', handleHashChange);
     }, []);
 
-    const { currentView, fileNumberParam, newCaseCategory } = useMemo(() => {
+    const { currentView, fileNumberParam, newCaseCategory, duplicateOf } = useMemo(() => {
         const hash = locationHash.startsWith('#/') ? locationHash.substring(1) : '/';
-        // Remove query params for splitting path
         const pathPart = hash.split('?')[0];
         const parts = pathPart.split('/').filter(Boolean);
         const view = parts[0] || 'dashboard';
 
-        const params = new URLSearchParams(locationHash.split('?')[1]);
+        const params = new URLSearchParams(locationHash.split('?')[1] || '');
         const category = params.get('category') as FileCategory | null;
+        const duplicate = params.get('duplicateOf');
 
         if (view === 'detail' && parts[1]) {
-            return { currentView: 'detail' as const, fileNumberParam: parts[1], newCaseCategory: category };
+            return { currentView: 'detail' as const, fileNumberParam: parts[1], newCaseCategory: category, duplicateOf: duplicate };
         }
-        if (view === 'tasks') {
-            return { currentView: 'tasks' as const, fileNumberParam: null, newCaseCategory: null };
-        }
-        if (view === 'responsible') {
-            return { currentView: 'responsible' as const, fileNumberParam: null, newCaseCategory: null };
-        }
-        if (view === 'clients') {
-            return { currentView: 'clients' as const, fileNumberParam: null, newCaseCategory: null };
-        }
-        return { currentView: 'dashboard' as const, fileNumberParam: null, newCaseCategory: null };
+        return { currentView: view as any, fileNumberParam: null, newCaseCategory: category, duplicateOf: duplicate };
     }, [locationHash]);
 
     const navigateTo = (path: string) => {
@@ -43,6 +34,7 @@ export const useHashRouter = () => {
         currentView,
         fileNumberParam,
         newCaseCategory,
+        duplicateOf,
         navigateTo
     };
 };

@@ -11,6 +11,7 @@ import {
     getDoc,
     setDoc,
     updateDoc,
+    deleteDoc,
     query,
     where
 } from 'firebase/firestore';
@@ -20,7 +21,7 @@ import type {
     ClientUpdateInput,
     ClientSearchParams,
     ClientSearchResult,
-} from '@/types/client';
+} from '@/types';
 import { normalizeDocumento, normalizeText, normalizeTelefono, isMostlyNumeric } from '@/utils/normalize';
 
 const clientsCollection = collection(db, 'clients');
@@ -37,6 +38,7 @@ export async function searchClients(params: ClientSearchParams): Promise<ClientS
         nombre,
         telefono,
         email,
+        direccion,
         tipo,
         estado = 'ACTIVO', // Por defecto solo activos
         limit = 10,
@@ -77,17 +79,28 @@ export async function searchClients(params: ClientSearchParams): Promise<ClientS
                 const normalizedTelefono = normalizeTelefono(client.telefono || '');
                 const normalizedEmail = (client.email || '').toLowerCase();
 
+                // Normalizar campos de domicilio fiscal
+                const normalizedDireccion = normalizeText(client.domicilioFiscal?.direccion || '');
+                const normalizedPoblacion = normalizeText(client.domicilioFiscal?.poblacion || '');
+                const normalizedProvincia = normalizeText(client.domicilioFiscal?.provincia || '');
+                const normalizedCP = (client.domicilioFiscal?.cp || '').toLowerCase();
+
                 // Si es búsqueda numérica, priorizar documento y teléfono
                 if (isNumericSearch) {
                     return normalizedDocumento?.includes(normalizedQ) ||
-                        normalizedTelefono?.includes(normalizedQ);
+                        normalizedTelefono?.includes(normalizedQ) ||
+                        normalizedCP.includes(normalizedQ);
                 }
 
-                // Búsqueda textual
+                // Búsqueda textual completa
                 return normalizedNombre.includes(normalizedQ) ||
                     normalizedDocumento?.includes(normalizedQ) ||
                     normalizedTelefono?.includes(normalizedQ) ||
-                    normalizedEmail.includes(q.toLowerCase());
+                    normalizedEmail.includes(q.toLowerCase()) ||
+                    normalizedDireccion.includes(normalizedQ) ||
+                    normalizedPoblacion.includes(normalizedQ) ||
+                    normalizedProvincia.includes(normalizedQ) ||
+                    normalizedCP.includes(normalizedQ);
             });
 
             // Ordenar resultados por relevancia
@@ -146,9 +159,16 @@ export async function searchClients(params: ClientSearchParams): Promise<ClientS
             );
         }
 
+        if (direccion) {
+            filtered = filtered.filter(c =>
+                c.direccion?.toLowerCase().includes(direccion.toLowerCase())
+            );
+        }
+
         // Paginación
         const total = filtered.length;
-        const paginatedItems = filtered.slice(offset, offset + limit);
+        const effectiveLimit = limit === 'all' ? total : limit;
+        const paginatedItems = filtered.slice(offset, offset + effectiveLimit);
 
         return {
             items: paginatedItems,
@@ -187,27 +207,37 @@ export async function getClientById(id: string): Promise<Client> {
  */
 export async function createClient(input: ClientCreateInput): Promise<Client> {
     try {
+        const normalizedDoc = normalizeDocumento(input.documento);
+        if (normalizedDoc) {
+            // Verificar duplicidad exacta por documento
+            const dupes = await searchClients({ documento: normalizedDoc, limit: 1 });
+            const exactDupe = dupes.items.find(d => normalizeDocumento(d.documento) === normalizedDoc);
+
+            if (exactDupe) {
+                throw new Error(`Ya existe un cliente con el identificador ${normalizedDoc} (${exactDupe.nombre})`);
+            }
+        }
+
         const now = new Date().toISOString();
         const id = crypto.randomUUID();
 
-        // Construir objeto sin undefined (Firestore no lo acepta)
+        // Construir objeto base
         const newClient: any = {
+            ...input,
             id,
-            tipo: input.tipo,
             nombre: normalizeText(input.nombre),
-            estado: 'ACTIVO',
+            documento: normalizedDoc,
+            estado: input.estado || 'ACTIVO',
             createdAt: now,
             updatedAt: now,
         };
 
-        // Solo añadir campos opcionales si tienen valor
-        const normalizedDoc = normalizeDocumento(input.documento);
-        if (normalizedDoc) newClient.documento = normalizedDoc;
-
-        if (input.telefono?.trim()) newClient.telefono = input.telefono.trim();
-        if (input.email?.trim()) newClient.email = input.email.trim().toLowerCase();
-        if (input.direccion?.trim()) newClient.direccion = input.direccion.trim();
-        if (input.notas?.trim()) newClient.notas = input.notas.trim();
+        // Limpiar undefined para Firestore
+        Object.keys(newClient).forEach(key => {
+            if (newClient[key] === undefined) {
+                delete newClient[key];
+            }
+        });
 
         const clientDoc = doc(clientsCollection, id);
         await setDoc(clientDoc, newClient);
@@ -215,7 +245,7 @@ export async function createClient(input: ClientCreateInput): Promise<Client> {
         return newClient as Client;
     } catch (error) {
         console.error('Error creating client:', error);
-        throw new Error('Error al crear cliente');
+        throw error;
     }
 }
 
@@ -231,33 +261,21 @@ export async function updateClient(id: string, input: ClientUpdateInput): Promis
             throw new Error(`Cliente con ID ${id} no encontrado`);
         }
 
-        // Construir objeto de actualizaciones sin undefined
+        // Construir objeto de actualizaciones
         const updates: any = {
+            ...input,
             updatedAt: new Date().toISOString(),
         };
 
-        // Solo añadir campos que vengan en el input
-        if (input.tipo !== undefined) updates.tipo = input.tipo;
-        if (input.nombre !== undefined) {
-            updates.nombre = normalizeText(input.nombre);
-        }
-        if (input.documento !== undefined) {
-            const normalized = normalizeDocumento(input.documento);
-            if (normalized) updates.documento = normalized;
-        }
-        if (input.email !== undefined && input.email.trim()) {
-            updates.email = input.email.trim().toLowerCase();
-        }
-        if (input.telefono !== undefined && input.telefono.trim()) {
-            updates.telefono = input.telefono.trim();
-        }
-        if (input.direccion !== undefined && input.direccion.trim()) {
-            updates.direccion = input.direccion.trim();
-        }
-        if (input.notas !== undefined && input.notas.trim()) {
-            updates.notas = input.notas.trim();
-        }
-        if (input.estado !== undefined) updates.estado = input.estado;
+        if (input.nombre) updates.nombre = normalizeText(input.nombre);
+        if (input.documento) updates.documento = normalizeDocumento(input.documento);
+
+        // Limpiar undefined para Firestore
+        Object.keys(updates).forEach(key => {
+            if (updates[key] === undefined) {
+                delete updates[key];
+            }
+        });
 
         await updateDoc(clientDoc, updates);
 
@@ -285,6 +303,47 @@ export async function deactivateClient(id: string): Promise<Client> {
  */
 export async function reactivateClient(id: string): Promise<Client> {
     return updateClient(id, { estado: 'ACTIVO' });
+}
+
+/**
+ * Mueve un cliente al archivo (Baja operativa)
+ */
+export async function archiveClient(id: string, metadata: { motivo?: string, usuario?: string, nota?: string }): Promise<Client> {
+    const now = new Date().toISOString();
+    return updateClient(id, {
+        estado: 'BAJA',
+        fechaBaja: now,
+        motivoBaja: metadata.motivo,
+        usuarioBaja: metadata.usuario,
+        notaBaja: metadata.nota
+    });
+}
+
+/**
+ * Restaura un cliente del archivo
+ */
+export async function restoreClient(id: string): Promise<Client> {
+    return updateClient(id, {
+        estado: 'ACTIVO',
+        fechaBaja: undefined,
+        motivoBaja: undefined,
+        usuarioBaja: undefined,
+        notaBaja: undefined
+    } as any);
+}
+
+/**
+ * Elimina permanentemente un cliente del sistema
+ * ADVERTENCIA: Esta acción es irreversible
+ */
+export async function deleteClient(id: string): Promise<void> {
+    try {
+        const clientRef = doc(clientsCollection, id);
+        await deleteDoc(clientRef);
+    } catch (error) {
+        console.error('Error deleting client:', error);
+        throw error;
+    }
 }
 
 /**

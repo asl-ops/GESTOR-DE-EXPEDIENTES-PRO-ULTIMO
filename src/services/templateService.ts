@@ -131,12 +131,13 @@ export const getActiveTemplates = async (): Promise<MandateTemplate[]> => {
         const templatesRef = collection(db, TEMPLATES_COLLECTION);
         const q = query(
             templatesRef,
-            where('isActive', '==', true),
-            orderBy('createdAt', 'desc')
+            where('isActive', '==', true)
         );
         const snapshot = await getDocs(q);
 
-        return snapshot.docs.map(doc => doc.data() as MandateTemplate);
+        return snapshot.docs
+            .map(doc => doc.data() as MandateTemplate)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     } catch (error) {
         console.error('Error getting active templates:', error);
         return [];
@@ -152,8 +153,7 @@ export const getTemplateByPrefix = async (prefixId: string): Promise<MandateTemp
         const q = query(
             templatesRef,
             where('prefixId', '==', prefixId),
-            where('isActive', '==', true),
-            orderBy('createdAt', 'desc')
+            where('isActive', '==', true)
         );
         const snapshot = await getDocs(q);
 
@@ -162,7 +162,11 @@ export const getTemplateByPrefix = async (prefixId: string): Promise<MandateTemp
             return getGlobalTemplate();
         }
 
-        return snapshot.docs[0].data() as MandateTemplate;
+        const templates = snapshot.docs
+            .map(doc => doc.data() as MandateTemplate)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        return templates[0];
     } catch (error) {
         console.error('Error getting template by prefix:', error);
         return null;
@@ -178,13 +182,17 @@ export const getGlobalTemplate = async (): Promise<MandateTemplate | null> => {
         const q = query(
             templatesRef,
             where('prefixId', '==', null),
-            where('isActive', '==', true),
-            orderBy('createdAt', 'desc')
+            where('isActive', '==', true)
         );
         const snapshot = await getDocs(q);
 
         if (snapshot.empty) return null;
-        return snapshot.docs[0].data() as MandateTemplate;
+
+        const templates = snapshot.docs
+            .map(doc => doc.data() as MandateTemplate)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        return templates[0];
     } catch (error) {
         console.error('Error getting global template:', error);
         return null;

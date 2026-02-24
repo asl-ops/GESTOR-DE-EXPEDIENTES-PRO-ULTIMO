@@ -1,104 +1,278 @@
-import React from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { CaseRecord, getCaseStatusBadgeColor } from '../types';
-import { getStatusRowColorClasses } from '../utils/statusColors';
+import { useAppContext } from '../contexts/AppContext';
+import {
+    Printer,
+    Copy,
+    RotateCcw,
+    ShieldCheck,
+    Lock,
+    Trash2,
+    Eye,
+    MoreHorizontal,
+    FileText
+} from 'lucide-react';
+import { CopyAction } from './ui/ActionFeedback';
+
+interface ColumnDef {
+    id: string;
+    label: string;
+    minWidth: number;
+    defaultWidth: number;
+    align?: 'left' | 'center' | 'right';
+}
 
 interface ExpedienteListItemProps {
     caseRecord: CaseRecord;
+    columnDefs: ColumnDef[];
     onSelectCase: (caseRecord: CaseRecord) => void;
+    isSelected: boolean;
+    onToggleSelection: (fileNumber: string) => void;
+    className?: string;
+    onPrint?: () => void;
+    onDuplicate?: () => void;
+    onReopen?: () => void;
+    onMaintain?: () => void;
+    onClose?: () => void;
+    onDelete?: () => void;
+    onPreview?: (caseRecord: CaseRecord) => void;
+    onCreateProforma?: (caseRecord: CaseRecord) => void;
 }
 
-const ExpedienteListItem: React.FC<ExpedienteListItemProps & { isSelected: boolean; onToggleSelection: (fileNumber: string) => void }> = ({
+const ExpedienteListItem: React.FC<ExpedienteListItemProps> = ({
     caseRecord,
+    columnDefs,
     onSelectCase,
     isSelected,
-    onToggleSelection
+    onToggleSelection,
+    className = '',
+    onPrint,
+    onDuplicate,
+    onReopen,
+    onMaintain,
+    onClose,
+    onDelete,
+    onPreview,
+    onCreateProforma
 }) => {
-    const { fileNumber, status, fileConfig, createdAt, client, situation, closedAt } = caseRecord;
+    const { users } = useAppContext();
+    const { fileNumber, status, createdAt, client, situation, closedAt, fileConfig, description } = caseRecord;
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    const responsibleName = useMemo(() => {
+        if (!fileConfig?.responsibleUserId) return '—';
+        const user = users.find(u => u.id === fileConfig.responsibleUserId);
+        return user ? user.name : fileConfig.responsibleUserId;
+    }, [users, fileConfig?.responsibleUserId]);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setIsMenuOpen(false);
+            }
+        };
+        if (isMenuOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [isMenuOpen]);
+
+    const handleAction = (e: React.MouseEvent, action?: () => void) => {
+        e.stopPropagation();
+        setIsMenuOpen(false);
+        if (action) action();
+    };
 
     return (
-        <div className={`grid grid-cols-[auto_1fr_1fr_3fr_1fr_1fr_1fr_1fr_2fr] gap-2 p-3 text-sm cursor-pointer transition-colors border-b ${getStatusRowColorClasses(status)} ${isSelected ? 'bg-blue-50' : ''}`}
+        <tr
+            className={`border-t app-divider hover:bg-[#f8fafc] cursor-pointer transition-colors group ${isSelected ? 'bg-sky-50/50 is-selected' : ''} ${className}`}
             onClick={() => onSelectCase(caseRecord)}
         >
-            {/* Checkbox Selection */}
-            <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-                <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => onToggleSelection(fileNumber)}
-                    className="w-4 h-4 text-sky-600 rounded border-gray-300 focus:ring-sky-500"
-                />
-            </div>
+            {columnDefs.map((col) => {
+                const alignClass = col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left';
 
-            {/* Tipo */}
-            <div className="truncate" title={fileConfig.category}>{fileConfig.category}</div>
+                // Content Switch
+                let content: React.ReactNode = null;
+                let cellClass = `py-1.5 px-3 text-[13px] font-normal leading-tight truncate ${alignClass}`;
 
-            {/* EXPEDIENTE */}
-            <div className="font-mono font-semibold text-sky-600 truncate" title={fileNumber}>{fileNumber}</div>
+                switch (col.id) {
+                    case 'select':
+                        content = (
+                            <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => onToggleSelection(fileNumber)}
+                                className="h-4 w-4 rounded border-slate-200 border-2 bg-transparent text-[#4c739a] checked:bg-[#4c739a] checked:border-[#4c739a] focus:ring-0 focus:ring-offset-0 focus:border-slate-200 focus:outline-none"
+                            />
+                        );
+                        cellClass = `py-1.5 px-3 text-center`;
+                        break;
 
-            {/* Cliente */}
-            <div className="text-slate-700 truncate" title={
-                caseRecord.clientSnapshot?.nombre ||
-                `${client.surnames} ${client.firstName}` ||
-                '—'
-            }>
-                {caseRecord.clientSnapshot?.nombre ||
-                    `${client.surnames} ${client.firstName}` ||
-                    '—'}
-            </div>
+                    case 'fileNumber':
+                        content = (
+                            <CopyAction text={fileNumber} duration={1500}>
+                                <div className="flex items-center gap-2 hover:text-sky-600 transition-colors group/copy">
+                                    <span className="font-mono">{fileNumber}</span>
+                                    <Copy size={12} className="opacity-0 group-hover/copy:opacity-100 transition-opacity" />
+                                </div>
+                            </CopyAction>
+                        );
+                        cellClass += " font-mono text-slate-700";
+                        break;
 
-            {/* FECHA DE APERTURA */}
-            <div className="text-slate-600 text-xs flex items-center justify-center">
-                <span>{new Date(createdAt).toLocaleDateString()}</span>
-            </div>
+                    case 'identifier':
+                        content = caseRecord.clientSnapshot?.documento || client.nif || '—';
+                        cellClass += " text-slate-700";
+                        break;
 
-            {/* FECHA DE CIERRLast login: Sat Nov 29 21:29:41 on ttys001
-antoniosanchez@Mac-mini-de-Antonio ~ % cd "~/Downloads/gestor-de-expedientes-pro VS CODE"
-cd: no such file or directory: ~/Downloads/gestor-de-expedientes-pro VS CODE
-antoniosanchez@Mac-mini-de-Antonio ~ % bash scripts/fix-and-install.sh
-bash: scripts/fix-and-install.sh: No such file or directory
-antoniosanchez@Mac-mini-de-Antonio ~ % npm run prepare
-npm error code ENOENT
-npm error syscall open
-npm error path /Users/antoniosanchez/package.json
-npm error errno -2
-npm error enoent Could not read package.json: Error: ENOENT: no such file or directory, open '/Users/antoniosanchez/package.json'
-npm error enoent This is related to npm not being able to find a file.
-npm error enoent
-npm error A complete log of this run can be found in: /Users/antoniosanchez/.npm/_logs/2025-11-29T20_32_12_922Z-debug-0.log
-antoniosanchez@Mac-mini-de-Antonio ~ % 
+                    case 'client':
+                        const clientName = caseRecord.clientSnapshot?.nombre || client.nombre || `${client.firstName || ''} ${client.surnames || ''}`.trim() || 'Sin Titular';
+                        content = <span title={clientName}>{clientName}</span>;
+                        cellClass += " text-slate-700 font-medium";
+                        break;
 
+                    case 'totalAmount':
+                        content = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(caseRecord.economicData?.totalAmount || 0);
+                        cellClass += " text-slate-700 font-bold";
+                        break;
 
+                    case 'createdAt':
+                        content = createdAt ? (isNaN(new Date(createdAt).getTime()) ? '—' : new Date(createdAt).toLocaleDateString('es-ES')) : '—';
+                        cellClass += " text-slate-500 text-[11px] uppercase tracking-tight";
+                        break;
 
+                    case 'closedAt':
+                        content = closedAt ? (isNaN(new Date(closedAt).getTime()) ? '—' : new Date(closedAt).toLocaleDateString('es-ES')) : '—';
+                        cellClass += " text-slate-500 text-[11px] uppercase tracking-tight";
+                        break;
 
+                    case 'notes':
+                        const noteText = description || (caseRecord as any).observations || (caseRecord as any).notes || '—';
+                        content = <span title={noteText}>{noteText}</span>;
+                        cellClass += " text-slate-500 italic";
+                        break;
 
+                    case 'actions':
+                        content = (
+                            <div className="relative flex justify-center">
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsMenuOpen(!isMenuOpen);
+                                    }}
+                                    className={`p-1 rounded-md transition-all duration-150 ${isMenuOpen ? 'bg-slate-200 text-slate-700 opacity-100' : 'text-slate-400 opacity-0 group-hover:opacity-100 hover:bg-slate-100'}`}
+                                >
+                                    <MoreHorizontal className="w-4 h-4" />
+                                </button>
 
-E */}
-            <div className="text-slate-600 text-xs flex items-center justify-center">
-                {status === 'Cerrado' && closedAt ? (
-                    <span>{new Date(closedAt).toLocaleDateString()}</span>
-                ) : null}
-            </div>
+                                {isMenuOpen && (
+                                    <div
+                                        ref={menuRef}
+                                        className="absolute right-0 top-full mt-1 w-48 bg-white border border-slate-200 rounded-lg shadow-xl z-50 py-1"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        <button
+                                            onClick={(e) => handleAction(e, () => onPreview?.(caseRecord))}
+                                            className="w-full text-left px-3 py-2 text-xs font-normal text-slate-600 hover:bg-slate-50 hover:text-indigo-600 flex items-center gap-2"
+                                        >
+                                            <Eye className="w-3.5 h-3.5" /> Vista Previa
+                                        </button>
 
-            {/* Saldo */}
-            <div className="text-slate-700 font-semibold flex items-center justify-end pr-4" title={`${caseRecord.economicData.totalAmount.toFixed(2)} €`}>
-                {new Intl.NumberFormat('es-ES', {
-                    style: 'currency',
-                    currency: 'EUR'
-                }).format(caseRecord.economicData.totalAmount)}
-            </div>
+                                        <button
+                                            onClick={(e) => handleAction(e, onDuplicate)}
+                                            className="w-full text-left px-3 py-2 text-xs font-normal text-slate-600 hover:bg-slate-50 hover:text-[#1380ec] flex items-center gap-2"
+                                        >
+                                            <Copy className="w-3.5 h-3.5" /> Duplicar
+                                        </button>
 
-            {/* Situación */}
-            <div className="text-sm text-slate-700 truncate" title={situation || 'Iniciado'}>
-                {situation || 'Iniciado'}
-            </div>
+                                        {status === 'Cerrado' ? (
+                                            <button
+                                                onClick={(e) => handleAction(e, onReopen)}
+                                                className="w-full text-left px-3 py-2 text-xs font-normal text-slate-600 hover:bg-slate-50 hover:text-emerald-600 flex items-center gap-2"
+                                            >
+                                                <RotateCcw className="w-3.5 h-3.5" /> Reabrir
+                                            </button>
+                                        ) : (
+                                            <>
+                                                <button
+                                                    onClick={(e) => handleAction(e, onMaintain)}
+                                                    className="w-full text-left px-3 py-2 text-xs font-normal text-slate-600 hover:bg-slate-50 hover:text-sky-600 flex items-center gap-2"
+                                                >
+                                                    <ShieldCheck className="w-3.5 h-3.5" /> Mantenimiento
+                                                </button>
+                                                <button
+                                                    onClick={(e) => handleAction(e, onClose)}
+                                                    className="w-full text-left px-3 py-2 text-xs font-normal text-slate-600 hover:bg-slate-50 hover:text-amber-600 flex items-center gap-2"
+                                                >
+                                                    <Lock className="w-3.5 h-3.5" /> Cerrar
+                                                </button>
+                                            </>
+                                        )}
 
-            {/* Estado */}
-            <div className="">
-                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getCaseStatusBadgeColor(status)}`}>
-                    {status}
-                </span>
-            </div>
-        </div>
+                                        {status === 'Cerrado' && (
+                                            <button
+                                                onClick={(e) => handleAction(e, () => onCreateProforma?.(caseRecord))}
+                                                className="w-full text-left px-3 py-2 text-xs font-normal text-slate-600 hover:bg-slate-50 hover:text-amber-600 flex items-center gap-2"
+                                            >
+                                                <FileText className="w-3.5 h-3.5" /> Crear Proforma
+                                            </button>
+                                        )}
+
+                                        <div className="h-px bg-slate-100 my-1" />
+
+                                        <button
+                                            onClick={(e) => handleAction(e, onPrint)}
+                                            className="w-full text-left px-3 py-2 text-xs font-normal text-slate-600 hover:bg-slate-50 hover:text-slate-800 flex items-center gap-2"
+                                        >
+                                            <Printer className="w-3.5 h-3.5" /> Imprimir
+                                        </button>
+
+                                        <div className="h-px bg-slate-100 my-1" />
+
+                                        <button
+                                            onClick={(e) => handleAction(e, onDelete)}
+                                            className="w-full text-left px-3 py-2 text-xs font-normal text-rose-500 hover:bg-rose-50 hover:text-rose-700 flex items-center gap-2"
+                                        >
+                                            <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                        cellClass = `py-1.5 px-3 relative user-select-none`;
+                        break;
+
+                    case 'situation':
+                        content = situation || 'Iniciado';
+                        cellClass += " text-slate-400 text-[11px] italic";
+                        break;
+
+                    case 'status':
+                        content = (
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider border border-transparent ${getCaseStatusBadgeColor(status)}`}>
+                                {status}
+                            </span>
+                        );
+                        break;
+
+                    case 'responsible':
+                        content = <span title={responsibleName}>{responsibleName}</span>;
+                        cellClass += " text-slate-700 text-[11px] font-medium uppercase";
+                        break;
+                }
+
+                return (
+                    <td
+                        key={col.id}
+                        className={cellClass}
+                        onClick={(col.id === 'select' || col.id === 'actions') ? (e) => e.stopPropagation() : undefined}
+                    >
+                        {content}
+                    </td>
+                );
+            })}
+        </tr>
     );
 };
 

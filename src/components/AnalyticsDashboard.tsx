@@ -8,7 +8,7 @@ import {
     calculatePercentageChange
 } from '@/services/analyticsService';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { TrendingUp, TrendingDown, DollarSign, FileText, Clock, Users } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, FileText, Clock } from 'lucide-react';
 
 interface AnalyticsDashboardProps {
     cases: CaseRecord[];
@@ -22,22 +22,25 @@ const StatsCard: React.FC<{
     change?: number;
     icon: React.ReactNode;
     color: string;
-}> = ({ title, value, change, icon, color }) => (
-    <div className="bg-white p-6 rounded-xl shadow-md border border-slate-200">
-        <div className="flex items-center justify-between">
-            <div>
-                <p className="text-sm text-slate-600 font-medium">{title}</p>
-                <p className="text-3xl font-bold text-slate-900 mt-2">{value}</p>
-                {change !== undefined && (
-                    <div className={`flex items-center mt-2 text-sm ${change >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                        {change >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
-                        <span>{Math.abs(change)}% vs mes anterior</span>
-                    </div>
-                )}
-            </div>
-            <div className={`p-4 rounded-full ${color}`}>
+    subtitle?: string;
+}> = ({ title, value, change, icon, color, subtitle }) => (
+    <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 group hover:border-sky-500/30 transition-all duration-300">
+        <div className="flex items-center gap-4 mb-4">
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white transition-all duration-300 ${color}`}>
                 {icon}
             </div>
+            <span className="text-slate-400 text-[10px] font-black uppercase tracking-widest">{title}</span>
+        </div>
+        <div className="text-3xl font-black text-slate-900 leading-tight">{value}</div>
+        <div className="mt-2 flex items-center justify-between">
+            {change !== undefined ? (
+                <div className={`text-[10px] font-bold flex items-center gap-1 ${change >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    {change >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                    <span>{Math.abs(change)}% vs mes anterior</span>
+                </div>
+            ) : (
+                <div className="text-[10px] font-bold text-slate-300">{subtitle || 'Métrica histórica'}</div>
+            )}
         </div>
     </div>
 );
@@ -67,121 +70,127 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ cases }) => {
     );
 
     const caseChange = calculatePercentageChange(stats.thisMonth, stats.lastMonth);
-    const revenueChange = calculatePercentageChange(revenue.thisMonth, revenue.lastMonth);
 
     return (
-        <div className="min-h-screen bg-slate-100 p-4 sm:p-6 lg:p-8">
-            <div className="max-w-7xl mx-auto">
-                <header className="mb-8">
-                    <h1 className="text-3xl font-bold text-slate-900">Dashboard Analytics</h1>
-                    <p className="text-slate-600 mt-2">Análisis y métricas de expedientes</p>
-                </header>
+        <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {/* Stats Cards Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <StatsCard
+                    title="Total Expedientes"
+                    value={stats.total}
+                    change={caseChange}
+                    icon={<FileText className="w-6 h-6" />}
+                    color="bg-sky-500 shadow-lg shadow-sky-500/20"
+                />
+                <StatsCard
+                    title="Ingresos Totales"
+                    value={formatCurrency(revenue.total)}
+                    icon={<DollarSign className="w-6 h-6" />}
+                    color="bg-emerald-500 shadow-lg shadow-emerald-500/20"
+                    subtitle="Facturación acumulada"
+                />
+                <StatsCard
+                    title="Tiempo Medio"
+                    value={`${stats.avgProcessingTime}d`}
+                    icon={<Clock className="w-6 h-6" />}
+                    color="bg-amber-500 shadow-lg shadow-amber-500/20"
+                    subtitle="Días por expediente"
+                />
+                <StatsCard
+                    title="Nuevos (Mes)"
+                    value={stats.thisMonth}
+                    icon={<TrendingUp className="w-6 h-6" />}
+                    color="bg-indigo-500 shadow-lg shadow-indigo-500/20"
+                    subtitle="Aperturas recientes"
+                />
+            </div>
 
-                {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                    <StatsCard
-                        title="Total Expedientes"
-                        value={stats.total}
-                        change={caseChange}
-                        icon={<FileText className="w-6 h-6 text-white" />}
-                        color="bg-blue-500"
-                    />
-                    <StatsCard
-                        title="Ingresos Totales"
-                        value={formatCurrency(revenue.total)}
-                        change={revenueChange}
-                        icon={<DollarSign className="w-6 h-6 text-white" />}
-                        color="bg-emerald-500"
-                    />
-                    <StatsCard
-                        title="Tiempo Promedio"
-                        value={`${stats.avgProcessingTime} días`}
-                        icon={<Clock className="w-6 h-6 text-white" />}
-                        color="bg-amber-500"
-                    />
-                    <StatsCard
-                        title="Este Mes"
-                        value={stats.thisMonth}
-                        icon={<TrendingUp className="w-6 h-6 text-white" />}
-                        color="bg-indigo-500"
-                    />
+            {/* Main Analytics Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Distribution Charts */}
+                <div className="space-y-8">
+                    <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm overflow-hidden">
+                        <h3 className="text-xs font-black text-slate-400 mb-8 uppercase tracking-widest border-l-4 border-sky-500 pl-4">Distribución por Estados</h3>
+                        <div className="h-[300px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={statusData}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={60}
+                                        outerRadius={100}
+                                        paddingAngle={5}
+                                        dataKey="value"
+                                    >
+                                        {statusData.map((_, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} strokeWidth={0} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip
+                                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                    />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+
+                    <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm overflow-hidden">
+                        <h3 className="text-xs font-black text-slate-400 mb-8 uppercase tracking-widest border-l-4 border-indigo-500 pl-4">Expedientes por Prefijo</h3>
+                        <div className="h-[300px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={prefixData}>
+                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} />
+                                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} />
+                                    <Tooltip
+                                        cursor={{ fill: '#f8fafc' }}
+                                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                    />
+                                    <Bar dataKey="value" fill="#6366f1" radius={[10, 10, 0, 0]} barSize={40} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Charts Row */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                    {/* Cases by Status */}
-                    <div className="bg-white p-6 rounded-xl shadow-md border border-slate-200">
-                        <h3 className="text-lg font-semibold text-slate-900 mb-4">Expedientes por Estado</h3>
-                        <ResponsiveContainer width="100%" height={300}>
-                            <PieChart>
-                                <Pie
-                                    data={statusData}
-                                    cx="50%"
-                                    cy="50%"
-                                    labelLine={false}
-                                    label={({ name, percent }: any) => `${name} (${((percent || 0) * 100).toFixed(0)}%)`}
-                                    outerRadius={80}
-                                    fill="#8884d8"
-                                    dataKey="value"
-                                >
-                                    {statusData.map((_, index) => (
-                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                    ))}
-                                </Pie>
-                                <Tooltip />
-                            </PieChart>
-                        </ResponsiveContainer>
+                {/* Financial and Client KPIs */}
+                <div className="space-y-8">
+                    <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm overflow-hidden">
+                        <h3 className="text-xs font-black text-slate-400 mb-8 uppercase tracking-widest border-l-4 border-emerald-500 pl-4">Ingresos por Especialidad</h3>
+                        <div className="h-[300px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={revenueByPrefixData}>
+                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} />
+                                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} />
+                                    <Tooltip
+                                        cursor={{ fill: '#f8fafc' }}
+                                        formatter={(value) => formatCurrency(Number(value))}
+                                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                    />
+                                    <Bar dataKey="value" fill="#10b981" radius={[10, 10, 0, 0]} barSize={40} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
                     </div>
 
-                    {/* Cases by Prefix */}
-                    <div className="bg-white p-6 rounded-xl shadow-md border border-slate-200">
-                        <h3 className="text-lg font-semibold text-slate-900 mb-4">Expedientes por Prefijo</h3>
-                        <ResponsiveContainer width="100%" height={300}>
-                            <BarChart data={prefixData}>
-                                <XAxis dataKey="name" />
-                                <YAxis />
-                                <Tooltip />
-                                <Bar dataKey="value" fill="#0088FE" />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-
-                {/* Revenue and Top Clients Row */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Revenue by Prefix */}
-                    <div className="bg-white p-6 rounded-xl shadow-md border border-slate-200">
-                        <h3 className="text-lg font-semibold text-slate-900 mb-4">Ingresos por Prefijo</h3>
-                        <ResponsiveContainer width="100%" height={300}>
-                            <BarChart data={revenueByPrefixData}>
-                                <XAxis dataKey="name" />
-                                <YAxis />
-                                <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                                <Bar dataKey="value" fill="#00C49F" />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-
-                    {/* Top Clients */}
-                    <div className="bg-white p-6 rounded-xl shadow-md border border-slate-200">
-                        <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center">
-                            <Users className="w-5 h-5 mr-2" />
-                            Top 5 Clientes
-                        </h3>
-                        <div className="space-y-4">
+                    <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm overflow-hidden">
+                        <h3 className="text-xs font-black text-slate-400 mb-8 uppercase tracking-widest border-l-4 border-amber-500 pl-4">Principales Clientes</h3>
+                        <div className="space-y-4 pt-4">
                             {topClients.map((client, index) => (
-                                <div key={client.clientId} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                                    <div className="flex items-center">
-                                        <div className="w-8 h-8 rounded-full bg-indigo-500 text-white flex items-center justify-center font-bold mr-3">
+                                <div key={client.clientId} className="group flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl border border-slate-50 transition-all hover:bg-white hover:shadow-md">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center font-black text-slate-400 group-hover:bg-slate-900 group-hover:text-white transition-all shadow-sm">
                                             {index + 1}
                                         </div>
                                         <div>
-                                            <p className="font-medium text-slate-900">{client.clientName}</p>
-                                            <p className="text-sm text-slate-600">{client.caseCount} expedientes</p>
+                                            <p className="text-sm font-black text-slate-900">{client.clientName}</p>
+                                            <p className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                                                <FileText className="w-3 h-3" /> {client.caseCount} expedientes
+                                            </p>
                                         </div>
                                     </div>
                                     <div className="text-right">
-                                        <p className="font-semibold text-emerald-600">{formatCurrency(client.totalRevenue)}</p>
+                                        <p className="text-sm font-black text-emerald-600">{formatCurrency(client.totalRevenue)}</p>
                                     </div>
                                 </div>
                             ))}

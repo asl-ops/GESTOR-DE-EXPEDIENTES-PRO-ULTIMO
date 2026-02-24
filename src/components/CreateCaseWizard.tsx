@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { FileCategory, Client } from '@/types';
 import { useAppContext } from '@/contexts/AppContext';
 import { Check, Search, UserPlus, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Button } from './ui/Button';
 
 interface CreateCaseWizardProps {
     onComplete: (category: FileCategory, client: Client) => void;
@@ -23,13 +24,14 @@ const CreateCaseWizard: React.FC<CreateCaseWizardProps> = ({ onComplete, onCance
     const [searchTerm, setSearchTerm] = useState('');
     const [isNewClient, setIsNewClient] = useState(false);
     const [newClientData, setNewClientData] = useState<Client>({
-        id: '', surnames: '', firstName: '', nif: '', address: '', city: '', province: '', postalCode: '', phone: '', email: ''
+        id: '', nombre: '', surnames: '', firstName: '', nif: '', address: '', city: '', province: '', postalCode: '', phone: '', email: ''
     });
 
     const filteredClients = savedClients.filter(c =>
-        c.nif.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.surnames.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.firstName.toLowerCase().includes(searchTerm.toLowerCase())
+        (c.nif || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.nombre || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.surnames || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.firstName || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     const handleNext = () => {
@@ -73,7 +75,7 @@ const CreateCaseWizard: React.FC<CreateCaseWizardProps> = ({ onComplete, onCance
         <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full overflow-hidden flex flex-col md:flex-row min-h-[600px]">
                 {/* Sidebar */}
-                <div className="bg-slate-900 text-white p-8 md:w-1/3 flex flex-col justify-between">
+                <div className="bg-slate-800 text-white p-8 md:w-1/3 flex flex-col justify-between">
                     <div>
                         <h2 className="text-2xl font-bold mb-8">Nuevo Expediente</h2>
                         <div className="space-y-6">
@@ -146,7 +148,7 @@ const CreateCaseWizard: React.FC<CreateCaseWizardProps> = ({ onComplete, onCance
                                                     className={`w-full p-3 text-left hover:bg-slate-50 flex justify-between items-center ${selectedClient?.id === client.id ? 'bg-indigo-50' : ''}`}
                                                 >
                                                     <div>
-                                                        <div className="font-medium text-slate-800">{client.surnames}, {client.firstName}</div>
+                                                        <div className="font-medium text-slate-800">{client.nombre || `${client.surnames || ''}, ${client.firstName || ''}`.trim()}</div>
                                                         <div className="text-sm text-slate-500">{client.nif}</div>
                                                     </div>
                                                     {selectedClient?.id === client.id && <Check className="text-indigo-600 w-5 h-5" />}
@@ -220,8 +222,8 @@ const CreateCaseWizard: React.FC<CreateCaseWizardProps> = ({ onComplete, onCance
                                         <span className="text-slate-600">Cliente:</span>
                                         <span className="font-medium text-slate-900">
                                             {isNewClient
-                                                ? `${newClientData.surnames}, ${newClientData.firstName}`
-                                                : `${selectedClient?.surnames}, ${selectedClient?.firstName}`
+                                                ? (newClientData.nombre || `${newClientData.surnames || ''}, ${newClientData.firstName || ''}`.trim())
+                                                : (selectedClient?.nombre || `${selectedClient?.surnames || ''}, ${selectedClient?.firstName || ''}`.trim())
                                             }
                                         </span>
                                     </div>
@@ -258,24 +260,22 @@ const CreateCaseWizard: React.FC<CreateCaseWizardProps> = ({ onComplete, onCance
                     </div>
 
                     <div className="mt-8 flex justify-between pt-4 border-t border-slate-200">
-                        <button
+                        <Button
+                            variant="outline"
                             onClick={handleBack}
-                            className="px-6 py-2 rounded-lg text-slate-600 hover:bg-slate-100 font-medium flex items-center gap-2"
+                            icon={ArrowLeft}
                         >
-                            <ArrowLeft className="w-4 h-4" />
                             {currentStep === 0 ? 'Cancelar' : 'Atrás'}
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                            variant="primary"
                             onClick={handleNext}
                             disabled={currentStep === 1 && !selectedClient && !isNewClient}
-                            className={`px-6 py-2 rounded-lg text-white font-medium flex items-center gap-2 transition-colors ${(currentStep === 1 && !selectedClient && !isNewClient)
-                                ? 'bg-slate-300 cursor-not-allowed'
-                                : 'bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200'
-                                }`}
+                            icon={currentStep === STEPS.length - 1 ? undefined : ArrowRight}
+                            iconPosition="right"
                         >
-                            {currentStep === STEPS.length - 1 ? 'Crear Expediente' : 'Siguiente'}
-                            {currentStep < STEPS.length - 1 && <ArrowRight className="w-4 h-4" />}
-                        </button>
+                            {currentStep === STEPS.length - 1 ? 'Crear expediente' : 'Siguiente'}
+                        </Button>
                     </div>
                 </div>
             </div>

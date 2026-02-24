@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 .vercel
 .env*.local
+
+# Import scripts output
+import-report-*.json
+clientes-ejemplo.xlsx

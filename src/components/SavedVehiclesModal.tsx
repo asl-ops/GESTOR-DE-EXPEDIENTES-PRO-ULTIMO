@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Vehicle } from '../types';
 import { XMarkIcon } from './icons';
 import { useAppContext } from '../contexts/AppContext';
+import { Button } from './ui/Button';
 
 interface SavedVehiclesModalProps {
   isOpen: boolean;
@@ -23,7 +24,7 @@ const SavedVehiclesModal: React.FC<SavedVehiclesModalProps> = ({ isOpen, onClose
     setSearchTerm('');
     onClose();
   };
-  
+
   const filteredVehicles = savedVehicles.filter(vehicle => {
     const searchTermLower = searchTerm.toLowerCase();
     return (
@@ -65,13 +66,16 @@ const SavedVehiclesModal: React.FC<SavedVehiclesModalProps> = ({ isOpen, onClose
               ))
             ) : (
               <p className="text-center text-slate-500 p-4">
-                {savedVehicles.length === 0 
-                    ? 'No hay vehículos guardados.' 
-                    : 'No se encontraron vehículos con ese criterio.'
+                {savedVehicles.length === 0
+                  ? 'No hay vehículos guardados.'
+                  : 'No se encontraron vehículos con ese criterio.'
                 }
               </p>
             )}
           </ul>
+        </div>
+        <div className="mt-6 flex justify-end flex-shrink-0">
+          <Button variant="ghost" onClick={handleClose}>Cerrar</Button>
         </div>
       </div>
     </div>

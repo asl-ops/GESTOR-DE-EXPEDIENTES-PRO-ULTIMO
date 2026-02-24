@@ -1,13 +1,27 @@
-
-import { db } from './firebase';
-import { collection, doc, getDocs, getDoc, setDoc, writeBatch, deleteDoc, query, where } from 'firebase/firestore';
-import { CaseRecord, Client, EconomicTemplates, AppSettings, Vehicle, DEFAULT_CASE_STATUSES, FileCategory } from '@/types';
+import { CaseRecord, Client, EconomicTemplates, AppSettings, Vehicle, DEFAULT_CASE_STATUSES, FileCategory, MovimientoExpediente, RegimenIVA, EstadoMovimiento, Naturaleza } from '@/types';
+import { getPrefijoMovimientos } from './prefijoMovimientoService';
+import { getMovimientoById } from './movimientoService';
+import { roundToTwo } from '@/utils/fiscalUtils';
 import { INITIAL_ECONOMIC_TEMPLATES } from './templates';
 import { DEFAULT_MANDATO_BODY } from './templateContent';
+import { db } from './firebase';
+import {
+    collection,
+    doc,
+    getDocs,
+    getDoc,
+    setDoc,
+    deleteDoc,
+    updateDoc,
+    writeBatch,
+    query,
+    where
+} from 'firebase/firestore';
 
 const caseCollection = collection(db, 'cases');
 const clientCollection = collection(db, 'clients');
 const vehicleCollection = collection(db, 'vehicles');
+const usersCollection = collection(db, 'users');
 const settingsDoc = doc(db, 'settings', 'app-settings');
 const templatesDoc = doc(db, 'economicTemplates', 'default');
 
@@ -39,10 +53,17 @@ export const saveOrUpdateCase = async (caseRecord: CaseRecord): Promise<{ update
     const recordToSave: CaseRecord = {
         ...serializableRecord,
         updatedAt: new Date().toISOString(),
-        createdAt: isNew ? new Date().toISOString() : caseRecord.createdAt,
+        createdAt: isNew ? new Date().toISOString() : (caseRecord.createdAt || new Date().toISOString()),
     };
 
-    await setDoc(caseDocRef, recordToSave, { merge: true });
+    // Sanitize undefined values (Firestore doesn't like them)
+    const sanitizedData = JSON.parse(JSON.stringify(recordToSave));
+
+    // Remove nulls that might have been undefined or explicitly null but we want to be safe
+    // Actually, Firestore accepts nulls, but NOT undefined.
+    // JSON.stringify removes undefined values by default.
+
+    await setDoc(caseDocRef, sanitizedData, { merge: true });
 
     const updatedHistory = await getCaseHistory();
     return { updatedHistory, isNew };
@@ -92,89 +113,100 @@ export const saveMultipleCases = async (cases: CaseRecord[]): Promise<CaseRecord
     return getCaseHistory();
 };
 
-export const getNextFileNumber = async (_category: string): Promise<string> => {
+export const getNextFileNumber = async (prefix: string = 'EXP'): Promise<string> => {
     const allCases = await getCaseHistory();
-    // Filter by category if needed, but usually numbering is global or per type. 
-    // The requirement says "assign automatically the next correlative number available for that type of expedient".
-    // Assuming the prefix (e.g. EXP) might change or just the number.
-    // Let's assume a global sequence for simplicity unless prefixes differ significantly.
-    // However, the user mentioned "Type: RECLAMACION" -> "last number for that Type".
-    // So we should filter by the prefix associated with the type or just the type itself if the number includes it.
-    // Current implementation uses "EXP-XXXX". 
-    // If the user wants different prefixes per type, we need to know them.
-    // For now, I will implement a logic that looks for the highest number in the current format "EXP-XXXX" 
-    // OR if the user wants specific prefixes per type, I'll need to map them.
-    // Looking at the codebase, `getPrefixes` exists in `prefixService`.
-    // But the user prompt says: "Input (Tipo)... Consulta... último número correlativo asignado para el 'Tipo: RECLAMACION'".
-    // This implies the numbering might be scoped by type.
-    // Let's look at existing file numbers. They seem to be 'EXP-0001'.
-    // I will implement a generic finder that looks for the pattern and increments.
 
-    // Actually, looking at the prompt again: "N_nuevo = N_último + 1".
-    // And "Generación: ... con el N_nuevo y el 'Tipo: GE-MAT'".
-    // This suggests the number is just a number, maybe with a prefix.
-    // I'll stick to the existing 'EXP-' prefix for now but make it robust.
+    // Filter cases that start with the specified prefix
+    const casesWithPrefix = allCases.filter(c => c.fileNumber.startsWith(prefix + '-'));
 
-    // Wait, if I filter by type, and different types share the "EXP-" prefix, we might have collisions if we don't check GLOBAL max.
-    // If the requirement is "correlative number for THAT TYPE", it implies independent sequences?
-    // "asignar automáticamente el siguiente número correlativo disponible para ese tipo de expediente"
-    // If Type A has EXP-001 and Type B has EXP-001, that's a collision if ID is fileNumber.
-    // ID IS fileNumber. So they must be unique globally OR have different prefixes.
-    // I will assume they share the sequence OR have different prefixes.
-    // Let's assume global sequence for "EXP-" for now to be safe, OR ask.
-    // But the prompt says "para ese tipo". 
-    // Let's look at `getPrefixes` usage in Dashboard.
-    // It seems prefixes are loaded.
-
-    // I'll implement a safe global increment for now to avoid ID collisions, 
-    // but filtered by the "prefix" if the type determines the prefix.
-    // If the type is just a category (GE-MAT), and the fileNumber is EXP-001, it's global.
-
-    const sortedCases = allCases.sort((a, b) => b.fileNumber.localeCompare(a.fileNumber, undefined, { numeric: true, sensitivity: 'base' }));
+    const sortedCases = casesWithPrefix.sort((a, b) => b.fileNumber.localeCompare(a.fileNumber, undefined, { numeric: true, sensitivity: 'base' }));
 
     let nextNum = 1;
     if (sortedCases.length > 0) {
         const lastFileNumber = sortedCases[0].fileNumber;
-        const match = lastFileNumber.match(/(\d+)$/);
+        const match = lastFileNumber.match(/-(\d+)$/);
         if (match) {
             nextNum = parseInt(match[1], 10) + 1;
         }
     }
 
-    return `EXP-${String(nextNum).padStart(4, '0')}`;
+    return `${prefix}-${String(nextNum).padStart(4, '0')}`;
 };
 
-export const createNewCase = async (category: FileCategory, subType?: string): Promise<CaseRecord> => {
-    const fileNumber = await getNextFileNumber(category);
+export const createNewCase = async (
+    category: FileCategory,
+    subType?: string,
+    forcedFileNumber?: string,
+    responsibleId?: string,
+    clienteId?: string,
+    clientSnapshot?: any,
+    prefixId?: string
+): Promise<CaseRecord> => {
+    const fileNumber = forcedFileNumber || await getNextFileNumber(category);
+
+    // Initial movements from prefix (if provided) - ATOMIC INITIALIZATION
+    let initialMovements: MovimientoExpediente[] = [];
+    if (prefixId) {
+        try {
+            const predefined = await getPrefijoMovimientos(prefixId);
+            initialMovements = await Promise.all(predefined.map(async (p, idx) => {
+                let finalImporte = p.importePorDefecto || 0;
+
+                // Si el importe en el enlace es 0/null, intentamos recuperar el del catálogo maestro
+                if (!finalImporte && prefixId) {
+                    try {
+                        const masterMov = await getMovimientoById(prefixId, p.movimientoId);
+                        if (masterMov && masterMov.importePorDefecto) {
+                            finalImporte = masterMov.importePorDefecto;
+                        }
+                    } catch (err) {
+                        console.warn('Error fetching master movement for fallback amount:', p.movimientoId);
+                    }
+                }
+
+                return {
+                    id: `mov_${Date.now()}_${idx}`,
+                    expedienteId: fileNumber,
+                    movimientoId: p.movimientoId,
+                    orden: p.orden,
+                    nombreSnapshot: p.nombre || '',
+                    codigoSnapshot: (p as any).codigo || '',
+                    naturalezaSnapshot: (p as any).naturaleza || Naturaleza.OTRO,
+                    descripcionOverride: p.nombre || '',
+                    importe: roundToTwo(finalImporte),
+                    regimenIva: (p as any).regimenIva || RegimenIVA.SUJETO,
+                    ivaPorcentaje: (p as any).ivaPorcentaje || 21,
+                    estado: EstadoMovimiento.REALIZADO,
+                    facturable: p.categoria === 'OPERATIVO',
+                    fecha: new Date().toISOString(),
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+            }));
+        } catch (e) {
+            console.error('CRITICAL: Error loading initial movements for new case:', e);
+            throw new Error(`No se pudo inicializar el expediente: Error al cargar movimientos del prefijo. ${e instanceof Error ? e.message : ''}`);
+        }
+    }
 
     const newCase: CaseRecord = {
         fileNumber,
+        clienteId: clienteId || null,
+        clientSnapshot: clientSnapshot || null,
         client: {
-            id: '',
-            surnames: '',
-            firstName: '',
-            nif: '',
-            address: '',
-            city: '',
-            province: '',
-            postalCode: '',
-            phone: '',
-            email: '',
+            id: '', nombre: '', surnames: '', firstName: '', nif: '', address: '',
+            city: '', province: '', postalCode: '', phone: '', email: '',
         },
         vehicle: {
-            vin: '',
-            brand: '',
-            model: '',
-            year: '',
-            engineSize: '',
-            fuelType: '',
+            vin: '', brand: '', model: '', year: '', engineSize: '', fuelType: '',
         },
         fileConfig: {
             fileType: subType || '',
             category: category,
-            responsibleUserId: '',
+            responsibleUserId: responsibleId || '',
             customValues: {}
         },
+        prefixId, // Store the prefix ID used
         economicData: {
             lines: [],
             subtotalAmount: 0,
@@ -185,13 +217,76 @@ export const createNewCase = async (category: FileCategory, subType?: string): P
         status: 'Pendiente Documentación',
         attachments: [],
         tasks: [],
+        movimientos: initialMovements,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        situation: 'Iniciado' // Default situation
+        situation: 'Iniciado'
     };
 
     await saveOrUpdateCase(newCase);
     return newCase;
+};
+
+/**
+ * Emergency utility to repair/initialize movements for an existing case.
+ * Useful if any case was created without mandatory movements during rollout.
+ */
+export const repairCaseMovements = async (
+    fileNumber: string,
+    prefixId: string
+): Promise<{ success: boolean; repairedCount: number }> => {
+    try {
+        const cases = await getCaseHistory();
+        const caseRecord = cases.find(c => c.fileNumber === fileNumber);
+
+        if (!caseRecord) {
+            throw new Error(`Expediente ${fileNumber} no encontrado`);
+        }
+
+        const currentMovements = caseRecord.movimientos || [];
+        const predefined = await getPrefijoMovimientos(prefixId);
+        const missingMovements: MovimientoExpediente[] = [];
+
+        predefined.forEach((p, idx) => {
+            // Check if this specific movement type already exists
+            const exists = currentMovements.some(m => m.movimientoId === p.movimientoId);
+            if (!exists) {
+                missingMovements.push({
+                    id: `mov_repair_${Date.now()}_${idx}`,
+                    expedienteId: fileNumber,
+                    movimientoId: p.movimientoId,
+                    orden: p.orden,
+                    nombreSnapshot: p.nombre || '',
+                    codigoSnapshot: (p as any).codigo || '',
+                    naturalezaSnapshot: (p as any).naturaleza || Naturaleza.OTRO,
+                    descripcionOverride: p.nombre || '',
+                    importe: roundToTwo(p.importePorDefecto || 0),
+                    regimenIva: (p as any).regimenIva || RegimenIVA.SUJETO,
+                    ivaPorcentaje: (p as any).ivaPorcentaje || 21,
+                    estado: p.estadoInicial,
+                    facturable: p.categoria === 'OPERATIVO',
+                    fecha: new Date().toISOString(),
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                });
+            }
+        });
+
+        if (missingMovements.length > 0) {
+            const updatedMovements = [...currentMovements, ...missingMovements].sort((a, b) => a.orden - b.orden);
+            const caseDocRef = doc(caseCollection, fileNumber);
+            await updateDoc(caseDocRef, {
+                movimientos: updatedMovements,
+                updatedAt: new Date().toISOString()
+            });
+            return { success: true, repairedCount: missingMovements.length };
+        }
+
+        return { success: true, repairedCount: 0 };
+    } catch (error) {
+        console.error('Error repairing case movements:', error);
+        throw error;
+    }
 };
 
 export const getSavedClients = async (): Promise<Client[]> => {
@@ -269,7 +364,9 @@ export const getSettings = async (): Promise<AppSettings> => {
         agency: defaultAgency,
         fieldConfigs: defaultFieldConfigs,
         caseStatuses: DEFAULT_CASE_STATUSES,
-        fileTypes: defaultFileTypes
+        fileTypes: defaultFileTypes,
+        deletePassword: '1812',
+        defaultInitialStatus: 'En Tramitación'
     };
 
     if (docSnap.exists()) {
@@ -313,6 +410,20 @@ export const getEconomicTemplates = async (): Promise<EconomicTemplates> => {
     return INITIAL_ECONOMIC_TEMPLATES;
 };
 
+
 export const saveEconomicTemplates = async (templates: EconomicTemplates): Promise<void> => {
     await setDoc(templatesDoc, { templates });
+};
+
+// --- USERS ---
+export const getUsers = async (): Promise<any[]> => {
+    const snapshot = await getDocs(usersCollection);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const saveUser = async (user: any): Promise<any[]> => {
+    const { id, ...userData } = user;
+    const userDocRef = id ? doc(usersCollection, id) : doc(usersCollection);
+    await setDoc(userDocRef, userData, { merge: true });
+    return getUsers();
 };

@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
-    Client, Vehicle, EconomicData, Communication, FileConfig,
-    CaseRecord, AttachedDocument, Task, CaseStatus, FileCategory
+    CaseRecord, AttachedDocument, Task, CaseStatus, FileCategory,
+    MovimientoExpediente, RegimenIVA, Client, Vehicle, EconomicData,
+    Communication, FileConfig
 } from '@/types';
 import { useAppContext } from '@/contexts/AppContext';
 import { useToast } from '@/hooks/useToast';
@@ -11,6 +12,7 @@ import {
     getInitialClient, getInitialVehicle, getInitialEconomicData,
     getInitialCommunicationsData, getInitialFileConfig, getFileNumber
 } from '@/utils/initializers';
+import { roundToTwo, calculateIVA } from '@/utils/fiscalUtils';
 
 // ... existing code ...
 
@@ -38,11 +40,46 @@ export const useCaseManager = () => {
     const [description, setDescription] = useState<string>('');  // Nueva descripción del expediente
     const [caseStatus, setCaseStatus] = useState<CaseStatus>('Pendiente Documentación');
     const [tasks, setTasks] = useState<Task[]>([]);
+    const [movimientos, setMovimientos] = useState<MovimientoExpediente[]>([]);
     const [createdAt, setCreatedAt] = useState<string>('');
 
     const [isClassifying, setIsClassifying] = useState(false);
     const [isBatchProcessing, setIsBatchProcessing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+
+    // 🆕 Sincronizar datos del cliente desde el catálogo global si tenemos ID
+    // Esto asegura que si el expediente solo tiene clienteId, cargamos sus metadatos (Nombre, NIF, DNI)
+    // para que componentes como el generador de Mandatos funcionen siempre.
+    useEffect(() => {
+        if (clienteId && savedClients.length > 0) {
+            const foundClient = savedClients.find(c => c.id === clienteId || (c.nif && c.nif === clienteId) || (c.documento && c.documento === clienteId));
+            if (foundClient) {
+                // Mapear el nuevo formato (nombre) al formato que espera este hook (firstName, surnames)
+                // si los campos están vacíos
+                setClient(prev => {
+                    // Evitar bucles de actualización si ya son iguales
+                    if (prev.id === foundClient.id && (prev.nif === (foundClient.nif || foundClient.documento))) {
+                        return prev;
+                    }
+
+                    const nombreCompuesto = foundClient.nombre || `${foundClient.firstName || ''} ${foundClient.surnames || ''}`.trim();
+
+                    return {
+                        ...prev,
+                        id: foundClient.id,
+                        firstName: foundClient.firstName || (nombreCompuesto.includes(',') ? nombreCompuesto.split(',')[1]?.trim() : nombreCompuesto),
+                        surnames: foundClient.surnames || (nombreCompuesto.includes(',') ? nombreCompuesto.split(',')[0]?.trim() : ''),
+                        nif: foundClient.nif || foundClient.documento || '',
+                        address: foundClient.direccion || '',
+                        city: foundClient.poblacion || '',
+                        phone: foundClient.telefono || '',
+                        email: foundClient.email || '',
+                        administrators: foundClient.administrators || []
+                    };
+                });
+            }
+        }
+    }, [clienteId, savedClients]);
 
 
 
@@ -70,6 +107,7 @@ export const useCaseManager = () => {
         setCommunications(getInitialCommunicationsData(currentUser.id));
         setAttachments([]);
         setTasks([]);
+        setMovimientos([]);
 
         if (category) {
             const initialConfig = getInitialFileConfig(currentUser.id, category);
@@ -85,28 +123,45 @@ export const useCaseManager = () => {
         setCreatedAt('');
     }, [currentUser, applyEconomicTemplate]);
 
-    const loadCaseData = useCallback((caseToLoad: CaseRecord) => {
-        setFileNumber(caseToLoad.fileNumber);
+    const loadCaseData = useCallback((caseToLoad: CaseRecord, isDuplication: boolean = false) => {
+        setFileNumber(isDuplication ? 'new' : caseToLoad.fileNumber);
         setClient(caseToLoad.client);
         setClienteId(caseToLoad.clienteId || null);
         setClientSnapshot(caseToLoad.clientSnapshot || null);
         setVehicle(caseToLoad.vehicle);
-        // Asegurar compatibilidad con expedientes antiguos que no tengan categoría
-        setFileConfig({
+        // Reset metadata for duplication
+        const baseConfig = {
             ...caseToLoad.fileConfig,
             category: caseToLoad.fileConfig.category || 'GE-MAT',
             customValues: caseToLoad.fileConfig.customValues || {}
-        });
-        setEconomicData(caseToLoad.economicData);
-        setCommunications(caseToLoad.communications);
-        setAttachments(caseToLoad.attachments || []);
-        setCaseStatus(caseToLoad.status);
+        };
+
+        if (isDuplication) {
+            // @ts-ignore - custom properties not in interface yet
+            baseConfig.openingDate = new Date().toISOString();
+            // @ts-ignore
+            baseConfig.closedAt = undefined;
+            // @ts-ignore
+            baseConfig.situation = 'Iniciado';
+        }
+
+        setFileConfig(baseConfig);
+        const filteredEconomicData = isDuplication ? {
+            ...caseToLoad.economicData,
+            lines: caseToLoad.economicData.lines.filter(l => !l.id.startsWith('pay-'))
+        } : caseToLoad.economicData;
+
+        setEconomicData(filteredEconomicData);
+        setCommunications(isDuplication ? [] : caseToLoad.communications);
+        setAttachments(isDuplication ? [] : (caseToLoad.attachments || []));
+        setCaseStatus(isDuplication ? 'Pendiente Documentación' : caseToLoad.status);
         setDescription(caseToLoad.description || '');  // Cargar descripción
-        setTasks(caseToLoad.tasks || []);
-        setCreatedAt(caseToLoad.createdAt);
+        setTasks(isDuplication ? [] : (caseToLoad.tasks || []));
+        setMovimientos(isDuplication ? [] : (caseToLoad.movimientos || []));
+        setCreatedAt(isDuplication ? '' : caseToLoad.createdAt);
     }, []);
 
-    const handleSaveAndReturn = async (currentTasks: Task[]) => {
+    const handleSaveAndReturn = async (currentTasks: Task[], forcedFileNumber?: string) => {
         if (!currentUser) return false;
 
         // Determinar si tenemos datos suficientes (nombre e identificador)
@@ -122,20 +177,38 @@ export const useCaseManager = () => {
 
         try {
             let finalFileNumber = fileNumber;
-            if (!finalFileNumber || finalFileNumber === 'new') {
-                // Buscar el número máximo entre TODOS los expedientes
-                const allNumbers = caseHistory
-                    .map(c => {
-                        const match = c.fileNumber.match(/-(\d+)$/);
-                        return match ? parseInt(match[1], 10) : 0;
-                    })
-                    .filter(num => num > 0);
+            if (forcedFileNumber) {
+                finalFileNumber = forcedFileNumber;
+            } else if (!finalFileNumber || finalFileNumber === 'new') {
+                // Intentar usar el sistema de prefijos transaccional
+                try {
+                    const { getPrefixes, getPrefixNextNumber } = await import('@/services/prefixService');
+                    const prefixes = await getPrefixes();
+                    const targetPrefix = prefixes.find(p => p.code === fileConfig.category);
 
-                const maxNumber = allNumbers.length > 0 ? Math.max(...allNumbers) : 0;
-                const newCounter = maxNumber + 1;
-                finalFileNumber = getFileNumber(newCounter);
-                setFileNumber(finalFileNumber);
+                    if (targetPrefix) {
+                        const nextNumResult = await getPrefixNextNumber(targetPrefix.id);
+                        finalFileNumber = `${targetPrefix.code}-${nextNumResult.formattedNumber}`;
+                    } else {
+                        // Fallback: Buscar el número máximo entre TODOS los expedientes (como antes)
+                        console.warn(`Prefijo ${fileConfig.category} no encontrado. Usando fallback.`);
+                        const allNumbers = caseHistory
+                            .map(c => {
+                                const match = c.fileNumber.match(/-(\d+)$/);
+                                return match ? parseInt(match[1], 10) : 0;
+                            })
+                            .filter(num => num > 0);
+
+                        const maxNumber = allNumbers.length > 0 ? Math.max(...allNumbers) : 0;
+                        const newCounter = maxNumber + 1;
+                        finalFileNumber = `EXP-${String(newCounter).padStart(4, '0')}`;
+                    }
+                } catch (err) {
+                    console.error('Error al generar número de expediente transaccional:', err);
+                    throw err;
+                }
             }
+            setFileNumber(finalFileNumber);
 
             const currentCaseData: CaseRecord = {
                 fileNumber: finalFileNumber,
@@ -150,6 +223,7 @@ export const useCaseManager = () => {
                 attachments,
                 status: caseStatus,
                 tasks: currentTasks,
+                movimientos: movimientos,
                 createdAt: createdAt || new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
             };
@@ -193,14 +267,32 @@ export const useCaseManager = () => {
         setIsClassifying(true);
         try {
             const newDocs = await Promise.all(files.map(async (file) => {
-                const newName = await classifyAndRenameDocument(file, fileNumber, client, vehicle);
-                return { id: `doc - ${Date.now()} -${Math.random()} `, file, name: newName, type: file.type, size: file.size, status: 'local' as const };
+                const { name, category } = await classifyAndRenameDocument(file, fileNumber, client, vehicle);
+                return {
+                    id: `doc-${Date.now()}-${Math.random()}`,
+                    file,
+                    name,
+                    category,
+                    type: file.type,
+                    size: file.size,
+                    status: 'local' as const,
+                    createdAt: new Date().toISOString()
+                };
             }));
             setAttachments((prev: AttachedDocument[]) => [...prev, ...newDocs]);
             addToast(`${newDocs.length} documento(s) clasificado(s) y añadido(s).`, 'info');
         } catch (error: any) {
             addToast(error.message.includes('API Key') ? error.message : 'Error al clasificar documentos.', 'error');
-            setAttachments((prev: AttachedDocument[]) => [...prev, ...files.map(file => ({ id: `doc - ${Date.now()} `, file, name: file.name, type: file.type, size: file.size, status: 'local' as const }))]);
+            setAttachments((prev: AttachedDocument[]) => [...prev, ...files.map(file => ({
+                id: `doc-${Date.now()}-${Math.random()}`,
+                file,
+                name: file.name,
+                category: 'Sin clasificar',
+                type: file.type,
+                size: file.size,
+                status: 'local' as const,
+                createdAt: new Date().toISOString()
+            }))]);
         } finally {
             setIsClassifying(false);
         }
@@ -252,12 +344,56 @@ export const useCaseManager = () => {
         if (success) addToast(`Expediente ${fileNumberToDelete} eliminado.`, 'success');
     };
 
+    // 🆕 Sincronizar movimientos -> EconomicData (totales) - FUENTE DE VERDAD
+    useEffect(() => {
+        if (!movimientos.length) return;
+
+        let subtotal = 0;
+        let vat = 0;
+
+        movimientos.forEach(m => {
+            const amt = roundToTwo(m.importe || 0);
+            subtotal = roundToTwo(subtotal + amt);
+            if (m.regimenIva === RegimenIVA.SUJETO && m.facturable) {
+                vat = roundToTwo(vat + calculateIVA(amt, m.ivaPorcentaje || 21));
+            }
+        });
+
+        const total = roundToTwo(subtotal + vat);
+
+        // Sync lines for legacy billing compatibility
+        const legacyLines = movimientos.map(m => ({
+            id: m.id,
+            conceptId: m.movimientoId,
+            concept: m.descripcionOverride || '',
+            type: m.facturable ? 'honorario' as const : 'suplido' as const,
+            amount: m.importe || 0
+        }));
+
+        // Solo actualizar si hay diferencia real significativa
+        if (
+            Math.abs(economicData.subtotalAmount - subtotal) > 0.001 ||
+            Math.abs(economicData.vatAmount - vat) > 0.001 ||
+            Math.abs(economicData.totalAmount - total) > 0.001 ||
+            economicData.lines.length !== legacyLines.length
+        ) {
+            setEconomicData(prev => ({
+                ...prev,
+                lines: legacyLines,
+                subtotalAmount: subtotal,
+                vatAmount: vat,
+                totalAmount: total
+            }));
+        }
+    }, [movimientos, economicData.subtotalAmount, economicData.vatAmount, economicData.totalAmount, economicData.lines.length]);
+
     return {
         client, setClient,
         clienteId, setClienteId,
         clientSnapshot, setClientSnapshot,
         vehicle, setVehicle,
         economicData, setEconomicData,
+        movimientos, setMovimientos,
         communications, setCommunications,
         attachments, setAttachments,
         fileConfig, setFileConfig, handleFileConfigChange,

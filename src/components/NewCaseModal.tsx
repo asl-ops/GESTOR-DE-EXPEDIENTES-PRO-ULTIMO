@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { XMarkIcon } from './icons';
 import { FileCategory } from '../types';
 import { getSettings, getNextFileNumber } from '../services/firestoreService';
+import { Button } from './ui/Button';
 
 interface NewCaseModalProps {
     isOpen: boolean;
@@ -60,17 +61,17 @@ const NewCaseModal: React.FC<NewCaseModalProps> = ({ isOpen, onClose, onCreate }
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-                <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-                    <h3 className="text-lg font-bold text-slate-800">Nuevo Expediente</h3>
-                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
-                        <XMarkIcon className="w-5 h-5" />
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-300 border border-slate-100">
+                <div className="bg-white px-8 py-6 border-b border-slate-50 flex justify-between items-center">
+                    <h3 className="app-section-title !text-base !mb-0">Nuevo Expediente</h3>
+                    <button onClick={onClose} className="text-slate-300 hover:text-slate-600 transition-colors">
+                        <XMarkIcon className="w-6 h-6" />
                     </button>
                 </div>
 
-                <div className="p-6 space-y-4">
+                <div className="p-8 space-y-6">
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                        <label className="app-label-block">
                             Categoría del Expediente
                         </label>
                         <select
@@ -85,7 +86,7 @@ const NewCaseModal: React.FC<NewCaseModalProps> = ({ isOpen, onClose, onCreate }
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                        <label className="app-label-block">
                             Tipo Específico
                         </label>
                         <select
@@ -102,25 +103,25 @@ const NewCaseModal: React.FC<NewCaseModalProps> = ({ isOpen, onClose, onCreate }
                         </select>
                     </div>
 
-                    <div className="bg-blue-50 text-blue-800 p-3 rounded-lg text-sm flex justify-between items-center">
-                        <span>Se asignará el número:</span>
-                        <span className="font-mono font-bold text-lg">{nextFileNumber || 'Cargando...'}</span>
+                    <div className="bg-sky-50/50 text-sky-800 p-4 rounded-xl border border-sky-100 flex justify-between items-center">
+                        <span className="app-label !text-sky-600 !tracking-tight">Se asignará el número:</span>
+                        <span className="text-xl font-normal text-sky-900 font-mono">{nextFileNumber || '...'}</span>
                     </div>
                 </div>
 
-                <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
-                    <button
+                <div className="bg-white px-8 py-5 border-t border-slate-50 flex justify-end gap-3">
+                    <Button
+                        variant="ghost"
                         onClick={onClose}
-                        className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg font-medium transition-colors"
                     >
                         Cancelar
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                        variant="primary"
                         onClick={handleCreate}
-                        className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-bold shadow-sm transition-colors"
                     >
-                        Crear Expediente
-                    </button>
+                        Crear expediente
+                    </Button>
                 </div>
             </div>
         </div>

@@ -8,6 +8,7 @@ import {
 import {
   initializeFirestore,
   persistentLocalCache,
+  persistentMultipleTabManager,
   type Firestore,
 } from "firebase/firestore";
 import {
@@ -22,7 +23,9 @@ const app =
 
 // Initialize Firestore with a persistent local cache and tab synchronization
 export const db: Firestore = initializeFirestore(app, {
-  localCache: persistentLocalCache(),
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager(),
+  }),
 });
 
 // Export the service instances

@@ -1,4 +1,4 @@
-import { collection, doc, getDocs, setDoc, deleteDoc, query, where, orderBy, limit } from 'firebase/firestore';
+import { collection, doc, getDocs, setDoc, deleteDoc, query, where } from 'firebase/firestore';
 import { db } from './firebase';
 import { Draft, CaseRecord } from '@/types';
 
@@ -41,15 +41,17 @@ export const getDraft = async (fileNumber: string, userId: string): Promise<Draf
         const q = query(
             draftsRef,
             where('fileNumber', '==', fileNumber),
-            where('userId', '==', userId),
-            orderBy('lastSaved', 'desc'),
-            limit(1)
+            where('userId', '==', userId)
         );
 
         const snapshot = await getDocs(q);
         if (snapshot.empty) return null;
 
-        return snapshot.docs[0].data() as Draft;
+        const drafts = snapshot.docs
+            .map(doc => doc.data() as Draft)
+            .sort((a, b) => new Date(b.lastSaved).getTime() - new Date(a.lastSaved).getTime());
+
+        return drafts[0];
     } catch (error) {
         console.error('Error getting draft:', error);
         return null;
@@ -76,12 +78,13 @@ export const listUserDrafts = async (userId: string): Promise<Draft[]> => {
         const draftsRef = collection(db, DRAFTS_COLLECTION);
         const q = query(
             draftsRef,
-            where('userId', '==', userId),
-            orderBy('lastSaved', 'desc')
+            where('userId', '==', userId)
         );
 
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => doc.data() as Draft);
+        return snapshot.docs
+            .map(doc => doc.data() as Draft)
+            .sort((a, b) => new Date(b.lastSaved).getTime() - new Date(a.lastSaved).getTime());
     } catch (error) {
         console.error('Error listing drafts:', error);
         return [];
