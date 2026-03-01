@@ -178,11 +178,11 @@ export const useInvoices = () => {
     /**
      * Subscribe to invoices (realtime) - excludes voided
      */
-    const subscribeToInvoices = useCallback((callback: (invoices: Invoice[]) => void) => {
+    const subscribeToInvoices = useCallback((callback: (invoices: Invoice[]) => void, maxResults: number = 10000) => {
         const q = query(
             collection(db, 'invoices'),
             where('status', '!=', 'void'),
-            limit(200)
+            limit(maxResults)
         );
 
         return onSnapshot(q, (snapshot) => {

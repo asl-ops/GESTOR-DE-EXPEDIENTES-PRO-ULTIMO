@@ -1,5 +1,5 @@
 {
-  "name": "gestor-expedientes-pro",
+  "name": "aga-nexus",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -10,7 +10,19 @@
     "import-clients": "node scripts/import-clients.cjs",
     "import-clients-fast": "node scripts/import-clients-fast.cjs",
     "delete-all-clients": "node scripts/delete-all-clients.cjs",
-    "generate-sample-excel": "node scripts/generate-sample-excel.cjs"
+    "generate-sample-excel": "node scripts/generate-sample-excel.cjs",
+    "backup-config": "node scripts/backup-master-config.cjs",
+    "reset-operational-safe": "node scripts/reset-operational-data-safe.cjs --dry-run",
+    "import-aga-historico": "node scripts/import-aga-historico-to-expedientes-pro.cjs",
+    "import-aga-excel": "node scripts/import-aga-excel-to-expedientes-pro.cjs",
+    "import-aga-economic-excel": "node scripts/import-aga-economic-excel-to-expedientes-pro.cjs",
+    "import-client-archive-index": "node scripts/import-client-archive-index.cjs",
+    "import-clients-depurados": "node scripts/import-clients-depurados.cjs",
+    "import-facturas-pendientes-depuradas": "node scripts/import-facturas-pendientes-depuradas.cjs",
+    "import-expedientes-abiertos-depurados": "node scripts/import-expedientes-abiertos-depurados.cjs",
+    "import-saldos-contables-depurados": "node scripts/import-saldos-contables-depurados.cjs",
+    "import-mayor-clientes-depurado": "node scripts/import-mayor-clientes-depurado.cjs",
+    "import-economic-batch": "node scripts/import-economic-batch.cjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",

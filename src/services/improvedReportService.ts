@@ -549,7 +549,7 @@ export const exportToPDF = (reportData: ReportData) => {
       <div class="footer">
         Generado el ${new Date().toLocaleDateString('es-ES')} a las ${new Date().toLocaleTimeString('es-ES')}
         <br>
-        Gestor de Expedientes Pro v1.0
+        AGA Nexus v1.0
       </div>
     </body>
     </html>

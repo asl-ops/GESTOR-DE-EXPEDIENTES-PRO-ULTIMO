@@ -6,8 +6,6 @@ import * as db from '@/services/firestoreService';
 import { getUsers, saveUser as apiSaveUser } from '@/services/userService';
 import { initializeAuth } from '@/services/firebase';
 import { useToast } from '@/hooks/useToast';
-import { onSnapshot, collection } from 'firebase/firestore';
-import { db as firestoreDb } from '@/services/firebase';
 
 
 interface AppContextType {
@@ -61,15 +59,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         // 2. Intentar conexión Firebase
         await initializeAuth();
 
-        const [history, clients, vehicles, settings, templates] = await Promise.all([
-          db.getCaseHistory(),
+        const [clients, vehicles, settings, templates] = await Promise.all([
           db.getSavedClients(),
           db.getSavedVehicles(),
           db.getSettings(),
           db.getEconomicTemplates(),
         ]);
 
-        setCaseHistory(history);
+        // Carga diferida de expedientes: el explorador consulta bajo demanda.
+        setCaseHistory([]);
         setSavedClients(clients);
         setSavedVehicles(vehicles);
         setAppSettings(settings);
@@ -114,21 +112,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
     loadInitialData();
 
-    // 🆕 Suscripción en tiempo real para Expedientes
-    const unsubscribeCases = onSnapshot(collection(firestoreDb, 'cases'), (snapshot) => {
-      const history = snapshot.docs.map(doc => doc.data() as CaseRecord);
-      // Ordenar por fecha de actualización para que el dashboard sea consistente
-      const sortedHistory = history.sort((a, b) =>
-        new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
-      );
-      setCaseHistory(sortedHistory);
-    }, (error) => {
-      console.error("Error in cases subscription:", error);
-    });
-
-    return () => {
-      unsubscribeCases();
-    };
+    return () => undefined;
   }, []);
 
   // Efecto para aplicar tema visual
@@ -158,8 +142,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const saveCase = useCallback(async (caseRecord: CaseRecord) => {
     try {
-      const { isNew } = await db.saveOrUpdateCase(caseRecord);
-      // No necesitamos setCaseHistory, onSnapshot se encarga
+      const { isNew, updatedHistory } = await db.saveOrUpdateCase(caseRecord);
+      setCaseHistory(updatedHistory);
       addToast(`Expediente ${caseRecord.fileNumber} ${isNew ? 'guardado' : 'actualizado'}.`, 'success');
       return { success: true, isNew };
     } catch (error) {

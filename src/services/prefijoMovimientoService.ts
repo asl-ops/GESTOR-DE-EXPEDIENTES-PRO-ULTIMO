@@ -15,6 +15,50 @@ import { PrefijoMovimiento } from '../types';
 
 const COLLECTION_NAME = 'prefijoMovimientos';
 
+const getMovimientoOrder = (movimiento: Partial<PrefijoMovimiento> & { order?: number }): number => {
+    const rawOrden = Number(movimiento.orden);
+    if (Number.isFinite(rawOrden) && rawOrden > 0) return rawOrden;
+    const rawOrder = Number(movimiento.order);
+    if (Number.isFinite(rawOrder) && rawOrder > 0) return rawOrder;
+    return 0;
+};
+
+const hasSequentialOrder = (movimientos: PrefijoMovimiento[]): boolean => {
+    const sorted = [...movimientos].sort((a, b) => getMovimientoOrder(a) - getMovimientoOrder(b));
+    return sorted.every((movimiento, index) => getMovimientoOrder(movimiento) === index + 1);
+};
+
+async function normalizePrefijoMovimientosOrder(prefijoId: string): Promise<void> {
+    if (!prefijoId) return;
+
+    const q = query(
+        collection(db, COLLECTION_NAME),
+        where('prefijoId', '==', prefijoId)
+    );
+    const querySnapshot = await getDocs(q);
+    const movimientos = querySnapshot.docs.map(docSnap => ({
+        id: docSnap.id,
+        ...docSnap.data()
+    } as PrefijoMovimiento));
+
+    if (!movimientos.length || hasSequentialOrder(movimientos)) return;
+
+    const sorted = [...movimientos].sort((a, b) => getMovimientoOrder(a) - getMovimientoOrder(b));
+    const batch = writeBatch(db);
+
+    sorted.forEach((movimiento, index) => {
+        const nextOrder = index + 1;
+        if (getMovimientoOrder(movimiento) !== nextOrder) {
+            batch.update(doc(db, COLLECTION_NAME, movimiento.id), {
+                orden: nextOrder,
+                order: nextOrder
+            });
+        }
+    });
+
+    await batch.commit();
+}
+
 /**
  * Edit permissions for a PrefijoMovimiento
  */
@@ -72,14 +116,19 @@ export async function getPrefijoMovimientos(prefijoId: string): Promise<PrefijoM
             where('prefijoId', '==', prefijoId)
         );
         const querySnapshot = await getDocs(q);
-        const movements = querySnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
+        const movements = querySnapshot.docs.map(docSnap => ({
+            id: docSnap.id,
+            ...docSnap.data()
         } as PrefijoMovimiento));
+
+        if (!hasSequentialOrder(movements)) {
+            await normalizePrefijoMovimientosOrder(prefijoId);
+            return getPrefijoMovimientos(prefijoId);
+        }
 
         console.log('✅ Successfully loaded', movements.length, 'movements for prefix:', prefijoId);
         // Sort in memory to avoid needing a composite index in Firestore
-        return movements.sort((a, b) => (a.orden || 0) - (b.orden || 0));
+        return movements.sort((a, b) => getMovimientoOrder(a) - getMovimientoOrder(b));
     } catch (error: any) {
         console.error("🔥 Error getting prefijo movimientos (raw):", error);
         console.error("🔥 error?.code:", error?.code);
@@ -145,13 +194,14 @@ export async function addPrefijoMovimiento(
     }
 
     try {
-        // Get current max orden for this prefix
+        await normalizePrefijoMovimientosOrder(data.prefijoId);
         const existing = await getPrefijoMovimientos(data.prefijoId);
-        const maxOrden = existing.reduce((max, m) => Math.max(max, m.orden), 0);
+        const nextOrder = existing.length + 1;
 
         const movimientoData = {
             ...data,
-            orden: data.orden ?? maxOrden + 1  // Use provided orden or next available
+            orden: nextOrder,
+            order: nextOrder
         };
 
         const docRef = await addDoc(collection(db, COLLECTION_NAME), movimientoData);
@@ -219,6 +269,7 @@ export async function deletePrefijoMovimiento(id: string): Promise<void> {
 
         const docRef = doc(db, COLLECTION_NAME, id);
         await deleteDoc(docRef);
+        await normalizePrefijoMovimientosOrder(current.prefijoId);
     } catch (error) {
         console.error('Error deleting prefijo movimiento:', error);
         throw error;
@@ -238,6 +289,22 @@ export async function reorderPrefijoMovimientos(
         // Get all movimientos to validate ordering
         const allMovimientos = await getPrefijoMovimientos(prefijoId);
         const movimientosMap = new Map(allMovimientos.map(m => [m.id, m]));
+
+        if (allMovimientos.length !== newOrder.length) {
+            throw new Error('El nuevo orden no incluye todos los movimientos del prefijo.');
+        }
+
+        const allIds = new Set(allMovimientos.map(m => m.id));
+        const seen = new Set<string>();
+        for (const id of newOrder) {
+            if (!allIds.has(id)) {
+                throw new Error('Se detectó un movimiento inválido en el nuevo orden.');
+            }
+            if (seen.has(id)) {
+                throw new Error('No se permiten movimientos duplicados en el orden.');
+            }
+            seen.add(id);
+        }
 
         // Validate that CABECERA movements come before OPERATIVO
         let lastCabeceraIndex = -1;
@@ -266,7 +333,7 @@ export async function reorderPrefijoMovimientos(
 
         newOrder.forEach((id, index) => {
             const docRef = doc(db, COLLECTION_NAME, id);
-            batch.update(docRef, { orden: index + 1 });
+            batch.update(docRef, { orden: index + 1, order: index + 1 });
         });
 
         await batch.commit();

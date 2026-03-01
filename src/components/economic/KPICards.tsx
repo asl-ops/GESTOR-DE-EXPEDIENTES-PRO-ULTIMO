@@ -3,7 +3,9 @@ import { FinancialKPIs } from '@/hooks/useEconomic';
 
 interface KPICardsProps {
     kpis: FinancialKPIs;
-    onDrillDown: (type: 'invoiced' | 'paid' | 'pending' | 'overdue' | 'billing') => void;
+    saldoContable: number;
+    onDrillDown: (type: 'openCases' | 'pendingInvoices' | 'contableBalance') => void;
+    loading?: boolean;
 }
 
 const formatCurrency = (value: number) =>
@@ -14,7 +16,8 @@ const Card: React.FC<{
     value: number;
     onClick: () => void;
     color?: string;
-}> = ({ label, value, onClick, color = 'text-slate-900' }) => (
+    loading?: boolean;
+}> = ({ label, value, onClick, color = 'text-slate-900', loading = false }) => (
     <div
         onClick={onClick}
         className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-sky-200 transition-all cursor-pointer group flex-1 min-w-[200px]"
@@ -22,43 +25,38 @@ const Card: React.FC<{
         <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 group-hover:text-sky-600 transition-colors">
             {label}
         </div>
-        <div className={`text-2xl font-mono font-medium tracking-tight ${color}`}>
-            {formatCurrency(value)}
-        </div>
+        {loading ? (
+            <div className="h-8 w-32 rounded bg-slate-100 animate-pulse" />
+        ) : (
+            <div className={`text-2xl font-mono font-medium tracking-tight ${color}`}>
+                {formatCurrency(value)}
+            </div>
+        )}
     </div>
 );
 
-const KPICards: React.FC<KPICardsProps> = ({ kpis, onDrillDown }) => {
+const KPICards: React.FC<KPICardsProps> = ({ kpis, saldoContable, onDrillDown, loading = false }) => {
     return (
         <div className="flex flex-wrap gap-4">
             <Card
-                label="Facturado"
+                label="Expedientes abiertos"
                 value={kpis.totalInvoiced}
-                onClick={() => onDrillDown('invoiced')}
+                onClick={() => !loading && onDrillDown('openCases')}
+                loading={loading}
             />
             <Card
-                label="Cobrado"
-                value={kpis.totalPaid}
-                onClick={() => onDrillDown('paid')}
-                color="text-emerald-600"
-            />
-            <Card
-                label="Pendiente"
+                label="Facturas pendientes"
                 value={kpis.totalPending}
-                onClick={() => onDrillDown('pending')}
+                onClick={() => !loading && onDrillDown('pendingInvoices')}
                 color="text-amber-600"
+                loading={loading}
             />
             <Card
-                label="Vencido"
-                value={kpis.totalOverdue}
-                onClick={() => onDrillDown('overdue')}
-                color="text-rose-600"
-            />
-            <Card
-                label="Pdte. Facturar"
-                value={kpis.pendingBilling}
-                onClick={() => onDrillDown('billing')}
-                color="text-slate-600"
+                label="Saldo contable"
+                value={saldoContable}
+                onClick={() => !loading && onDrillDown('contableBalance')}
+                color="text-slate-700"
+                loading={loading}
             />
         </div>
     );

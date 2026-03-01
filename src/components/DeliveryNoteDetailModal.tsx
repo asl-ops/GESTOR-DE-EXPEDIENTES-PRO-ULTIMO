@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Check, Trash2, Calendar } from 'lucide-react';
+import { Check, Trash2, Calendar, Copy } from 'lucide-react';
 import { HeaderActions } from './ui/HeaderActions';
 import { DeliveryNote } from '../types/billing';
 import { useBilling } from '../hooks/useBilling';
 import { useConfirmation } from '@/hooks/useConfirmation';
 import ConfirmationModal from './ConfirmationModal';
+import { CopyAction } from './ui/ActionFeedback';
 
 interface Props {
     isOpen: boolean;
@@ -70,7 +71,18 @@ const DeliveryNoteDetailModal: React.FC<Props> = ({ isOpen, onClose, deliveryNot
                         <div>
                             <span className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Cliente</span>
                             <div className="font-semibold text-slate-900 text-lg">{deliveryNote.clientName}</div>
-                            <div className="text-xs text-slate-500 font-mono mt-1">{deliveryNote.clientIdentity}</div>
+                            <div className="text-xs text-slate-500 font-mono mt-1">
+                                {deliveryNote.clientIdentity ? (
+                                    <CopyAction text={deliveryNote.clientIdentity}>
+                                        <div className="inline-flex items-center gap-1 group/copy">
+                                            <span>{deliveryNote.clientIdentity}</span>
+                                            <Copy size={11} className="text-slate-300 group-hover/copy:text-sky-500" />
+                                        </div>
+                                    </CopyAction>
+                                ) : (
+                                    'Sin documento'
+                                )}
+                            </div>
                         </div>
                         <div className="text-right">
                             <span className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Expediente</span>

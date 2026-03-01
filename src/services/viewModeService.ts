@@ -4,6 +4,7 @@
  */
 
 const VIEW_MODE_KEY = 'expedientes-pro-view-mode';
+export const VIEW_MODE_CHANGED_EVENT = 'aga-nexus:view-mode-changed';
 
 export type ViewMode = 'menu' | 'cards';
 
@@ -42,4 +43,7 @@ export function getViewMode(): ViewMode {
  */
 export function setViewMode(mode: ViewMode): void {
     localStorage.setItem(VIEW_MODE_KEY, mode);
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent<ViewMode>(VIEW_MODE_CHANGED_EVENT, { detail: mode }));
+    }
 }

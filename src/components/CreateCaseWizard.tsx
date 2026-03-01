@@ -92,7 +92,7 @@ const CreateCaseWizard: React.FC<CreateCaseWizardProps> = ({ onComplete, onCance
                         </div>
                     </div>
                     <div className="text-slate-400 text-sm">
-                        Gestor de Expedientes Pro
+                        AGA Nexus
                     </div>
                 </div>
 

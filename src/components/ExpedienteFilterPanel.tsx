@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Filter, X, RotateCcw, ChevronDown, FileText, Users, Calendar, DollarSign, Tag, Hash, User, MapPin } from 'lucide-react';
+import { Filter, X, RotateCcw, ChevronDown, FileText, Users, Calendar, DollarSign, Tag, Hash, User, MapPin, Pin } from 'lucide-react';
 import type { PrefixConfig } from '@/types';
 
 export interface ExpedienteFilters {
@@ -45,6 +45,8 @@ interface ExpedienteFilterPanelProps {
     estados?: string[];
     responsables?: Array<{ id: string; name: string }>;
     etiquetas?: string[];
+    isPinned?: boolean;
+    onTogglePin?: () => void;
 }
 
 const ExpedienteFilterPanel: React.FC<ExpedienteFilterPanelProps> = ({
@@ -54,7 +56,9 @@ const ExpedienteFilterPanel: React.FC<ExpedienteFilterPanelProps> = ({
     isOpen,
     prefixes = [],
     estados = [],
-    responsables = []
+    responsables = [],
+    isPinned = false,
+    onTogglePin
 }) => {
     const updateFilter = <K extends keyof ExpedienteFilters>(key: K, value: ExpedienteFilters[K]) => {
         onFiltersChange({ ...filters, [key]: value });
@@ -136,6 +140,19 @@ const ExpedienteFilterPanel: React.FC<ExpedienteFilterPanelProps> = ({
                                 <RotateCcw className="w-3 h-3" /> Limpiar
                             </button>
                         )}
+                        {onTogglePin && (
+                            <button
+                                onClick={onTogglePin}
+                                className={`p-1.5 rounded-lg transition-colors ${isPinned
+                                    ? 'text-sky-600 bg-sky-50 hover:bg-sky-100'
+                                    : 'text-slate-300 hover:text-slate-500 hover:bg-slate-50'
+                                    }`}
+                                title={isPinned ? 'Desfijar panel de filtros' : 'Fijar panel de filtros'}
+                                aria-label={isPinned ? 'Desfijar panel de filtros' : 'Fijar panel de filtros'}
+                            >
+                                <Pin className={`w-4 h-4 ${isPinned ? 'fill-sky-600' : ''}`} />
+                            </button>
+                        )}
                         <button
                             onClick={onClose}
                             className="p-1.5 text-slate-300 hover:text-slate-500 hover:bg-slate-50 rounded-lg transition-colors ml-2"
@@ -165,7 +182,7 @@ const ExpedienteFilterPanel: React.FC<ExpedienteFilterPanelProps> = ({
                                     type="text"
                                     value={filters.numeroExpediente || ''}
                                     onChange={(e) => updateFilter('numeroExpediente', e.target.value || undefined)}
-                                    placeholder="GE-MAT-0001"
+                                    placeholder="NÚMERO DE EXPEDIENTE"
                                     className="w-full pl-11 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm font-normal text-slate-700 bg-slate-50 shadow-sm focus:bg-white focus:ring-4 focus:ring-sky-500/10 focus:border-sky-500 outline-none transition-all"
                                 />
                             </div>

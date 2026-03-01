@@ -215,7 +215,7 @@ export const CasePrintView: React.FC<CasePrintViewProps> = ({ caseData, fullFile
 
             {/* Footer */}
             <div className="mt-16 pt-8 border-t border-slate-100 text-[8px] text-slate-400 text-center uppercase tracking-[0.4em]">
-                Documento de Uso Interno — Gestor de Expedientes Pro v3.5
+                Documento de Uso Interno — AGA Nexus v3.5
             </div>
         </div>
     );

@@ -14,6 +14,7 @@ interface ColumnSelectorMenuProps {
     visibleIds: string[];
     onToggle: (id: string) => void;
     className?: string;
+    iconOnly?: boolean;
 }
 
 export const ColumnSelectorMenu: React.FC<ColumnSelectorMenuProps> = ({
@@ -21,7 +22,8 @@ export const ColumnSelectorMenu: React.FC<ColumnSelectorMenuProps> = ({
     options,
     visibleIds,
     onToggle,
-    className
+    className,
+    iconOnly = false
 }) => {
     const [open, setOpen] = React.useState(false);
     const rootRef = React.useRef<HTMLDivElement>(null);
@@ -40,15 +42,32 @@ export const ColumnSelectorMenu: React.FC<ColumnSelectorMenuProps> = ({
 
     return (
         <div ref={rootRef} className={`relative ${className || ''}`}>
-            <Button
-                variant={open ? 'soft' : 'ghost'}
-                size="sm"
-                icon={Columns3}
-                onClick={() => setOpen(v => !v)}
-                className={open ? 'border border-sky-200 !text-sky-700' : '!text-slate-500 hover:!text-sky-700'}
-            >
-                {title}
-            </Button>
+            {iconOnly ? (
+                <div className="relative group">
+                    <Button
+                        variant={open ? 'soft' : 'ghost'}
+                        size="icon"
+                        icon={Columns3}
+                        onClick={() => setOpen(v => !v)}
+                        aria-label={title}
+                        title={title}
+                        className={open ? 'border border-sky-200 !text-sky-700' : '!text-slate-500 hover:!text-sky-700'}
+                    />
+                    <span className="pointer-events-none absolute top-[calc(100%+8px)] left-1/2 -translate-x-1/2 whitespace-nowrap px-2.5 py-1 rounded-lg bg-white border border-slate-200 shadow text-[10px] font-bold uppercase tracking-wider text-slate-700 opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all z-20">
+                        {title}
+                    </span>
+                </div>
+            ) : (
+                <Button
+                    variant={open ? 'soft' : 'ghost'}
+                    size="sm"
+                    icon={Columns3}
+                    onClick={() => setOpen(v => !v)}
+                    className={open ? 'border border-sky-200 !text-sky-700' : '!text-slate-500 hover:!text-sky-700'}
+                >
+                    {title}
+                </Button>
+            )}
 
             {open && (
                 <div className="absolute right-0 mt-2 w-64 rounded-xl border border-slate-200 bg-white shadow-2xl z-[9999] p-2">

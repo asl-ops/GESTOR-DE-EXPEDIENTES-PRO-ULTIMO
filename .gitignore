@@ -35,5 +35,6 @@ clientes-ejemplo.xlsx
 # Local backups / temp files
 node_modules_backup_*/
 package-lock.backup_*.json
+backups/
 *.tmp
 *.timestamp-*.mjs

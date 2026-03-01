@@ -309,7 +309,7 @@ const ProformaPDFDocument: React.FC<ProformaPDFProps> = ({ proforma, company }) 
 
                 {/* Footer */}
                 <Text style={styles.footer}>
-                    Documento generado por Gestor de Expedientes Pro
+                    Documento generado por AGA Nexus
                 </Text>
             </Page>
         </Document>

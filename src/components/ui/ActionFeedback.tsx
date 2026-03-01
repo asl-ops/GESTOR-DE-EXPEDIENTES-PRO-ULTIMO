@@ -67,15 +67,15 @@ export const ActionFeedback: React.FC<ActionFeedbackProps> = ({
                 <div
                     className={cn(
                         "absolute top-full right-0 mt-3 whitespace-nowrap z-[100] origin-top-right",
-                        "bg-white/95 backdrop-blur-md border border-slate-100 shadow-2xl rounded-2xl p-3",
+                        "bg-white border border-sky-200 shadow-2xl rounded-2xl px-3.5 py-3",
                         "transition-all duration-300 transform scale-100 opacity-100 animate-in fade-in zoom-in-95"
                     )}
                 >
                     <div className="flex items-center gap-2">
-                        <div className={cn("size-6 rounded-full flex items-center justify-center", style.iconBg, style.iconText)}>
+                        <div className={cn("size-6 rounded-full flex items-center justify-center ring-2 ring-sky-200/60", style.iconBg, style.iconText)}>
                             <Icon size={14} strokeWidth={3} />
                         </div>
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                        <span className="text-[11px] font-black text-sky-700 uppercase tracking-widest leading-none">
                             {label}
                         </span>
                     </div>
@@ -118,9 +118,15 @@ export const CopyAction: React.FC<CopyActionProps> = ({
             onClose={() => setActive(false)}
             label={label}
             color={color}
-            duration={duration}
+            duration={Math.max(duration, 1500)}
         >
-            <div onClick={handleCopy} className="cursor-pointer">
+            <div
+                onClick={handleCopy}
+                className={cn(
+                    "cursor-pointer rounded-md transition-all duration-200",
+                    active && "bg-sky-50 ring-2 ring-sky-300/70 px-1"
+                )}
+            >
                 {children}
             </div>
         </ActionFeedback>

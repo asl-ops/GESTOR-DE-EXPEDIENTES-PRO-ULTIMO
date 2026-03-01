@@ -355,6 +355,7 @@ export const ClientImporter: React.FC = () => {
                                             <div className="bg-white rounded-xl px-3 py-2 border border-blue-200">provincia</div>
                                             <div className="bg-white rounded-xl px-3 py-2 border border-blue-200">codigoPostal</div>
                                             <div className="bg-white rounded-xl px-3 py-2 border border-blue-200">observaciones</div>
+                                            <div className="bg-white rounded-xl px-3 py-2 border border-blue-200">datosContactoImportadosCCS</div>
                                         </div>
                                         <p className="text-[9px] text-blue-700 italic mt-2">
                                             <span className="text-emerald-600">*</span> Campos obligatorios

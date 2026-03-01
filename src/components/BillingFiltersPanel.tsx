@@ -7,7 +7,8 @@ import {
     Hash,
     Briefcase,
     User as UserIcon,
-    Activity
+    Activity,
+    Pin
 } from 'lucide-react';
 import { ClientTypeahead } from './ClientTypeahead';
 import SmartDatePicker from './ui/SmartDatePicker';
@@ -25,6 +26,7 @@ export interface BillingFilters {
     clientLabel: string;
     caseId: string; // Expediente / Albarán
     prefix: string;
+    ejercicio?: string;
     responsibleId: string;
     responsibleLabel: string;
     dateType: 'createdAt' | 'closedAt';
@@ -42,6 +44,13 @@ interface BillingFiltersPanelProps {
     // Arrays for suggestions
     caseIds?: string[];
     prefixes?: string[];
+    showEjercicio?: boolean;
+    showCaseFilter?: boolean;
+    showPrefixFilter?: boolean;
+    showResponsibleFilter?: boolean;
+    showStatusFilter?: boolean;
+    isPinned?: boolean;
+    onTogglePin?: () => void;
 }
 
 // Reusing PredictiveInput directly here for self-containment or could be extracted
@@ -138,18 +147,26 @@ const BillingFiltersPanel: React.FC<BillingFiltersPanelProps> = ({
     onClose,
     isOpen,
     caseIds = [],
-    prefixes = []
+    prefixes = [],
+    showEjercicio = false,
+    showCaseFilter = true,
+    showPrefixFilter = true,
+    showResponsibleFilter = true,
+    showStatusFilter = true,
+    isPinned = false,
+    onTogglePin
 }) => {
     const { users } = useAppContext();
 
     const hasActiveFilters =
         filters.clientId ||
-        filters.caseId ||
-        filters.prefix ||
-        filters.responsibleId ||
+        (showCaseFilter && filters.caseId) ||
+        (showPrefixFilter && filters.prefix) ||
+        filters.ejercicio ||
+        (showResponsibleFilter && filters.responsibleId) ||
         filters.startDate ||
         filters.endDate ||
-        filters.status !== 'Pending'; // Assuming 'Pending' is default
+        (showStatusFilter && filters.status !== 'Todos');
 
     const userSuggestions: Suggestion[] = users.map(u => ({
         id: u.id,
@@ -197,6 +214,19 @@ const BillingFiltersPanel: React.FC<BillingFiltersPanelProps> = ({
                                 <RotateCcw className="w-3 h-3" /> Limpiar
                             </button>
                         )}
+                        {onTogglePin && (
+                            <button
+                                onClick={onTogglePin}
+                                className={`p-1.5 rounded-lg transition-colors ${isPinned
+                                    ? 'text-sky-600 bg-sky-50 hover:bg-sky-100'
+                                    : 'text-slate-300 hover:text-slate-500 hover:bg-slate-50'
+                                    }`}
+                                title={isPinned ? 'Desfijar panel de filtros' : 'Fijar panel de filtros'}
+                                aria-label={isPinned ? 'Desfijar panel de filtros' : 'Fijar panel de filtros'}
+                            >
+                                <Pin className={`w-4 h-4 ${isPinned ? 'fill-sky-600' : ''}`} />
+                            </button>
+                        )}
                         <button
                             onClick={onClose}
                             className="p-1.5 text-slate-300 hover:text-slate-500 hover:bg-slate-50 rounded-lg transition-colors ml-2"
@@ -235,40 +265,64 @@ const BillingFiltersPanel: React.FC<BillingFiltersPanelProps> = ({
                         </div>
                     </div>
 
-                    {/* Case ID */}
-                    <PredictiveInput
-                        label="Nº Expediente / Albarán"
-                        value={filters.caseId}
-                        displayValue={filters.caseId}
-                        onChange={(id) => updateFilter('caseId', id)}
-                        suggestions={caseSuggestions}
-                        placeholder="EXP-00..."
-                        icon={<Hash className="w-5 h-5" />}
-                    />
+                    {showCaseFilter && (
+                        <PredictiveInput
+                            label="Nº Expediente / Albarán"
+                            value={filters.caseId}
+                            displayValue={filters.caseId}
+                            onChange={(id) => updateFilter('caseId', id)}
+                            suggestions={caseSuggestions}
+                            placeholder="EXP-00..."
+                            icon={<Hash className="w-5 h-5" />}
+                        />
+                    )}
 
-                    {/* Prefix */}
-                    <PredictiveInput
-                        label="Prefijo"
-                        value={filters.prefix}
-                        displayValue={filters.prefix}
-                        onChange={(id) => updateFilter('prefix', id)}
-                        suggestions={prefixSuggestions}
-                        placeholder="EXP, GE..."
-                        icon={<Briefcase className="w-5 h-5" />}
-                    />
+                    {showPrefixFilter && (
+                        <PredictiveInput
+                            label="Prefijo"
+                            value={filters.prefix}
+                            displayValue={filters.prefix}
+                            onChange={(id) => updateFilter('prefix', id)}
+                            suggestions={prefixSuggestions}
+                            placeholder="EXP, GE..."
+                            icon={<Briefcase className="w-5 h-5" />}
+                        />
+                    )}
 
-                    {/* Responsible */}
-                    <PredictiveInput
-                        label="Responsable"
-                        value={filters.responsibleId}
-                        displayValue={filters.responsibleLabel}
-                        onChange={(id, label) => {
-                            onFilterChange({ ...filters, responsibleId: id, responsibleLabel: label });
-                        }}
-                        suggestions={userSuggestions}
-                        placeholder="Buscar responsable..."
-                        icon={<UserIcon className="w-5 h-5" />}
-                    />
+                    {showEjercicio && (
+                        <div className="flex flex-col gap-2">
+                            <label className="app-label-block px-1">Ejercicio</label>
+                            <div className="relative">
+                                <Hash className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                                <input
+                                    type="text"
+                                    value={filters.ejercicio || ''}
+                                    onChange={(e) => {
+                                        const year = e.target.value.replace(/\D/g, '').slice(0, 4);
+                                        updateFilter('ejercicio', year || undefined);
+                                    }}
+                                    placeholder="AAAA"
+                                    maxLength={4}
+                                    inputMode="numeric"
+                                    className="w-full pl-11 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm font-normal text-slate-700 bg-slate-50 shadow-sm focus:bg-white focus:ring-4 focus:ring-sky-500/10 focus:border-sky-500 outline-none transition-all"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {showResponsibleFilter && (
+                        <PredictiveInput
+                            label="Responsable"
+                            value={filters.responsibleId}
+                            displayValue={filters.responsibleLabel}
+                            onChange={(id, label) => {
+                                onFilterChange({ ...filters, responsibleId: id, responsibleLabel: label });
+                            }}
+                            suggestions={userSuggestions}
+                            placeholder="Buscar responsable..."
+                            icon={<UserIcon className="w-5 h-5" />}
+                        />
+                    )}
 
                     <div className="border-t border-slate-50 pt-6">
                         <h3 className="app-title mb-4 ml-1">Periodo y Estado</h3>
@@ -288,23 +342,24 @@ const BillingFiltersPanel: React.FC<BillingFiltersPanelProps> = ({
                             />
                         </div>
 
-                        {/* Status */}
-                        <div className="flex flex-col gap-2 mt-6">
-                            <label className="app-label-block px-1">Estado</label>
-                            <div className="relative">
-                                <select
-                                    value={filters.status}
-                                    onChange={(e) => updateFilter('status', e.target.value)}
-                                    className="w-full bg-slate-50 border border-[#cfdbe7] rounded-lg h-12 pl-4 pr-10 text-base font-normal text-[#0d141b] appearance-none focus:ring-2 focus:ring-[#1380ec]/20 outline-none transition-all"
-                                >
-                                    <option value="Todos">Todos</option>
-                                    <option value="Pending">Pendiente</option>
-                                    <option value="Invoiced">Facturado</option>
-                                    <option value="Void">Anulado</option>
-                                </select>
-                                <Activity className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                        {showStatusFilter && (
+                            <div className="flex flex-col gap-2 mt-6">
+                                <label className="app-label-block px-1">Estado</label>
+                                <div className="relative">
+                                    <select
+                                        value={filters.status}
+                                        onChange={(e) => updateFilter('status', e.target.value)}
+                                        className="w-full bg-slate-50 border border-[#cfdbe7] rounded-lg h-12 pl-4 pr-10 text-base font-normal text-[#0d141b] appearance-none focus:ring-2 focus:ring-[#1380ec]/20 outline-none transition-all"
+                                    >
+                                        <option value="Todos">Todos</option>
+                                        <option value="Pending">Pendiente</option>
+                                        <option value="Invoiced">Facturado</option>
+                                        <option value="Void">Anulado</option>
+                                    </select>
+                                    <Activity className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
                 </div>
                 <div className="h-8 bg-gradient-to-t from-white to-transparent pointer-events-none" />

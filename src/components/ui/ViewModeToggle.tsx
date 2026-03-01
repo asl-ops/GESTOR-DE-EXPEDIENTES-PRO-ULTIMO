@@ -1,14 +1,32 @@
 import React, { useState } from 'react';
 import { LayoutGrid, List } from 'lucide-react';
-import { getViewMode, setViewMode, ViewMode } from '../../services/viewModeService';
+import { getViewMode, setViewMode, ViewMode, VIEW_MODE_CHANGED_EVENT } from '../../services/viewModeService';
 
 interface ViewModeToggleProps {
     onChange?: (mode: ViewMode) => void;
 }
 
-export const ViewModeToggle: React.FC<ViewModeToggleProps> = ({ onChange }) => {
+export const ViewModeToggle: React.FC<ViewModeToggleProps> = React.memo(({ onChange }) => {
     const [viewMode, setViewModeState] = useState<ViewMode>(getViewMode());
     const [isHovering, setIsHovering] = useState<'menu' | 'cards' | null>(null);
+
+    React.useEffect(() => {
+        const syncViewMode = (event: Event) => {
+            const customEvent = event as CustomEvent<ViewMode>;
+            if (customEvent.detail === 'menu' || customEvent.detail === 'cards') {
+                setViewModeState(customEvent.detail);
+                return;
+            }
+            setViewModeState(getViewMode());
+        };
+
+        window.addEventListener(VIEW_MODE_CHANGED_EVENT, syncViewMode as EventListener);
+        window.addEventListener('storage', syncViewMode as EventListener);
+        return () => {
+            window.removeEventListener(VIEW_MODE_CHANGED_EVENT, syncViewMode as EventListener);
+            window.removeEventListener('storage', syncViewMode as EventListener);
+        };
+    }, []);
 
     const handleToggle = (mode: ViewMode) => {
         if (mode === viewMode) return; // Don't toggle if already in this mode
@@ -22,8 +40,7 @@ export const ViewModeToggle: React.FC<ViewModeToggleProps> = ({ onChange }) => {
             window.location.hash = '#/';
         }
 
-        // Force page reload to apply new view mode
-        window.location.reload();
+        // No hard reload: App listens to view mode changes and re-renders instantly.
     };
 
     return (
@@ -119,4 +136,4 @@ export const ViewModeToggle: React.FC<ViewModeToggleProps> = ({ onChange }) => {
             </button>
         </div>
     );
-};
+});

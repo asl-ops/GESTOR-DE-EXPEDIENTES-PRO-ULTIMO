@@ -1,5 +1,5 @@
 import React from 'react';
-import { Filter, X, RotateCcw, ChevronDown, MapPin, CreditCard, Hash, Users } from 'lucide-react';
+import { Filter, X, RotateCcw, ChevronDown, MapPin, CreditCard, Hash, Users, Pin } from 'lucide-react';
 import type { ClientFilters, ClientType } from '@/types/client';
 import { PaymentMethod } from '@/types/paymentMethod';
 
@@ -9,6 +9,8 @@ interface ClientFilterPanelProps {
     onClose: () => void;
     paymentMethods?: PaymentMethod[];
     isOpen: boolean;
+    isPinned?: boolean;
+    onTogglePin?: () => void;
 }
 
 // Spanish provinces
@@ -37,7 +39,9 @@ const ClientFilterPanel: React.FC<ClientFilterPanelProps> = ({
     onFiltersChange,
     onClose,
     paymentMethods = [],
-    isOpen
+    isOpen,
+    isPinned = false,
+    onTogglePin
 }) => {
     const updateFilter = <K extends keyof ClientFilters>(key: K, value: ClientFilters[K]) => {
         onFiltersChange({ ...filters, [key]: value });
@@ -88,6 +92,19 @@ const ClientFilterPanel: React.FC<ClientFilterPanelProps> = ({
                                 title="Limpiar todos los filtros"
                             >
                                 <RotateCcw className="w-3 h-3" /> Limpiar
+                            </button>
+                        )}
+                        {onTogglePin && (
+                            <button
+                                onClick={onTogglePin}
+                                className={`p-1.5 rounded-lg transition-colors ${isPinned
+                                    ? 'text-sky-600 bg-sky-50 hover:bg-sky-100'
+                                    : 'text-slate-300 hover:text-slate-500 hover:bg-slate-50'
+                                    }`}
+                                title={isPinned ? 'Desfijar panel de filtros' : 'Fijar panel de filtros'}
+                                aria-label={isPinned ? 'Desfijar panel de filtros' : 'Fijar panel de filtros'}
+                            >
+                                <Pin className={`w-4 h-4 ${isPinned ? 'fill-sky-600' : ''}`} />
                             </button>
                         )}
                         <button

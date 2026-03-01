@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { FileText, MoreHorizontal, Eye, Trash2, Copy, Ban, Filter, X, Edit3, Printer } from 'lucide-react';
+import { FileText, MoreHorizontal, Eye, Trash2, Copy, Ban, X, Edit3, Printer } from 'lucide-react';
 import { pdf } from '@react-pdf/renderer';
 import BillingFiltersPanel, { BillingFilters } from './BillingFiltersPanel';
 import ProformaDetailModal from './ProformaDetailModal';
@@ -9,17 +9,22 @@ import { useProformas } from '../hooks/useProformas';
 import { useToast } from '../hooks/useToast';
 import { useCompanySettings } from '../hooks/useCompanySettings';
 import { BackToHubButton } from './ui/BackToHubButton';
+import { BackToClientNavigationButton } from './ui/BackToClientNavigationButton';
+import { PremiumFilterButton } from './ui/PremiumFilterButton';
 import { CopyAction } from './ui/ActionFeedback';
 import Breadcrumbs from './ui/Breadcrumbs';
 import { ColumnSelectorMenu, type ColumnSelectorOption } from './ui/ColumnSelectorMenu';
 import { navigateToModule } from '@/utils/moduleNavigation';
 import { useConfirmation } from '@/hooks/useConfirmation';
 import ConfirmationModal from './ConfirmationModal';
+import { getClientNavigationReturnPath, saveClientNavigationContext } from '@/utils/clientNavigationContext';
+import { toUiTitleCase } from '@/utils/titleCase';
 
 interface ProformasViewProps {
 }
 
 const PROFORMAS_VISIBLE_FIELDS_KEY = 'proformas-visible-fields-v1';
+const PROFORMAS_FILTERS_PINNED_KEY = 'proformas-filters-pinned';
 
 const statusLabels: Record<ProformaStatus, { label: string; color: string }> = {
     draft: { label: 'Borrador', color: 'bg-slate-100 text-slate-600' },
@@ -87,6 +92,9 @@ const ProformasView: React.FC<ProformasViewProps> = () => {
         const saved = localStorage.getItem('proformas-filters-open');
         return saved === 'true';
     });
+    const [isFilterPanelPinned, setIsFilterPanelPinned] = useState(() => {
+        return localStorage.getItem(PROFORMAS_FILTERS_PINNED_KEY) === 'true';
+    });
     const proformasFieldOptions: ColumnSelectorOption[] = [
         { id: 'number', label: 'Número' },
         { id: 'client', label: 'Cliente' },
@@ -111,6 +119,10 @@ const ProformasView: React.FC<ProformasViewProps> = () => {
         localStorage.setItem(PROFORMAS_VISIBLE_FIELDS_KEY, JSON.stringify(visibleFields));
     }, [visibleFields]);
 
+    useEffect(() => {
+        localStorage.setItem(PROFORMAS_FILTERS_PINNED_KEY, String(isFilterPanelPinned));
+    }, [isFilterPanelPinned]);
+
     const toggleVisibleField = (id: string) => {
         setVisibleFields(prev => prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]);
     };
@@ -119,7 +131,7 @@ const ProformasView: React.FC<ProformasViewProps> = () => {
     // ✅ Cerrar automáticamente el panel de filtros después de inactividad
     useEffect(() => {
         // Solo cerrar si el panel está abierto Y no hay filtros activos
-        if (isFilterPanelOpen && activeFilterCount === 0) {
+        if (isFilterPanelOpen && activeFilterCount === 0 && !isFilterPanelPinned) {
             // Esperar 5 segundos de inactividad antes de cerrar
             const timer = setTimeout(() => {
                 setIsFilterPanelOpen(false);
@@ -128,7 +140,7 @@ const ProformasView: React.FC<ProformasViewProps> = () => {
 
             return () => clearTimeout(timer);
         }
-    }, [isFilterPanelOpen, activeFilterCount]);
+    }, [isFilterPanelOpen, activeFilterCount, isFilterPanelPinned]);
 
     const [selectedProforma, setSelectedProforma] = useState<Proforma | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -150,8 +162,22 @@ const ProformasView: React.FC<ProformasViewProps> = () => {
     useEffect(() => {
         const params = new URLSearchParams(window.location.hash.split('?')[1]);
         const clientId = params.get('clientId');
+        const identifier = params.get('identifier');
+        const clientName = params.get('clientName');
         if (clientId) {
             setSelectedClientId(clientId);
+            setFilters(prev => ({
+                ...prev,
+                clientId,
+                clientLabel: clientName || identifier || prev.clientLabel
+            }));
+            saveClientNavigationContext({
+                active: true,
+                clientId,
+                identifier: identifier || undefined,
+                clientName: clientName || undefined,
+                sourceModule: 'proformas'
+            });
         }
     }, []);
 
@@ -223,6 +249,8 @@ const ProformasView: React.FC<ProformasViewProps> = () => {
                 onClear={handleClearFilters}
                 onClose={() => setIsFilterPanelOpen(false)}
                 isOpen={isFilterPanelOpen}
+                isPinned={isFilterPanelPinned}
+                onTogglePin={() => setIsFilterPanelPinned(prev => !prev)}
                 caseIds={allCaseIds}
                 prefixes={allPrefixes}
             />
@@ -247,49 +275,26 @@ const ProformasView: React.FC<ProformasViewProps> = () => {
 
                             {/* Botón Volver a Clientes - Solo visible cuando se filtra por cliente */}
                             {selectedClientId && (
-                                <button
+                                <BackToClientNavigationButton
                                     onClick={() => {
                                         setSelectedClientId(null);
-                                        navigateToModule('/clients');
+                                        navigateToModule(getClientNavigationReturnPath());
                                     }}
-                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200 hover:border-slate-300 transition-all shadow-sm hover:shadow-md active:scale-95 group"
-                                    title="Volver al explorador de clientes"
-                                >
-                                    <svg className="w-4 h-4 text-slate-600 group-hover:text-slate-700 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                                    </svg>
-                                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                                        Volver a Clientes
-                                    </span>
-                                </button>
+                                />
                             )}
 
-                            {/* Filtros button */}
-                                <button
-                                    onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all shadow-sm hover:shadow-md active:scale-95 group relative ${isFilterPanelOpen
-                                    ? 'bg-sky-500 border-sky-600 text-white'
-                                    : 'bg-gradient-to-r from-sky-50 to-indigo-50 border-sky-200 hover:border-sky-300'
-                                    }`}
-                                title="Abrir panel de filtros"
-                            >
-                                <Filter className={`w-4 h-4 transition-colors ${isFilterPanelOpen
-                                    ? 'text-white'
-                                    : 'text-sky-600 group-hover:text-sky-700'
-                                    }`} />
-                                <span className={`text-xs font-bold uppercase tracking-wider ${isFilterPanelOpen
-                                    ? 'text-white'
-                                    : 'text-sky-700'
-                                    }`}>
-                                    Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-                                    </span>
-                                </button>
+                            <PremiumFilterButton
+                                isActive={isFilterPanelOpen}
+                                onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
+                                tooltip={`Filtrar proformas${activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}`}
+                            />
 
                                 <ColumnSelectorMenu
                                     title="Columnas"
                                     options={proformasFieldOptions}
                                     visibleIds={visibleFields}
                                     onToggle={toggleVisibleField}
+                                    iconOnly
                                 />
 
                             {/* Active filter chips */}
@@ -343,7 +348,7 @@ const ProformasView: React.FC<ProformasViewProps> = () => {
                                             >
                                                 {/* Icon */}
                                                 <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-                                                    <FileText size={18} />
+                                                    <FileText size={18} strokeWidth={2.5} />
                                                 </div>
 
                                                 {/* Details */}
@@ -370,7 +375,7 @@ const ProformasView: React.FC<ProformasViewProps> = () => {
                                                     {visibleFieldsSet.has('client') && <div>
                                                         <div className="text-[10px] uppercase tracking-widest text-slate-400 mb-1">Cliente</div>
                                                         <div className="text-slate-600 text-sm">
-                                                            {proforma.clientName || <span className="italic text-slate-400">Sin cliente</span>}
+                                                            {toUiTitleCase(proforma.clientName) || <span className="italic text-slate-400">Sin cliente</span>}
                                                         </div>
                                                     </div>}
                                                     {visibleFieldsSet.has('amount') && <div>

@@ -8,6 +8,8 @@ import {
 import SmartDatePicker from './ui/SmartDatePicker';
 
 export interface EconomicFilters {
+    periodMode: 'all' | 'fiscalYear' | 'custom';
+    fiscalYear?: number;
     startDate: string;
     endDate: string;
     dateType: 'createdAt' | 'closedAt';
@@ -31,8 +33,16 @@ const EconomicFiltersPanel: React.FC<EconomicFiltersPanelProps> = ({
     onClose,
     isOpen
 }) => {
+    const currentYear = new Date().getFullYear();
+    const availableYears = Array.from({ length: 8 }, (_, i) => currentYear - i);
+
+    const fiscalBounds = (year: number) => ({
+        start: `${year}-01-01`,
+        end: `${year}-12-31`
+    });
 
     const hasActiveFilters =
+        filters.periodMode !== 'all' ||
         filters.startDate ||
         filters.endDate ||
         filters.caseStatus !== 'all' ||
@@ -42,6 +52,69 @@ const EconomicFiltersPanel: React.FC<EconomicFiltersPanelProps> = ({
     const updateFilter = (key: keyof EconomicFilters, value: any) => {
         onFilterChange({ ...filters, [key]: value });
     };
+
+    const handlePeriodModeChange = (value: string) => {
+        if (value === 'all') {
+            onFilterChange({
+                ...filters,
+                periodMode: 'all',
+                fiscalYear: undefined,
+                startDate: '',
+                endDate: ''
+            });
+            return;
+        }
+
+        if (value === 'custom') {
+            onFilterChange({
+                ...filters,
+                periodMode: 'custom',
+                fiscalYear: undefined
+            });
+            return;
+        }
+
+        const year = Number(value);
+        if (!Number.isFinite(year)) return;
+        const { start, end } = fiscalBounds(year);
+        onFilterChange({
+            ...filters,
+            periodMode: 'fiscalYear',
+            fiscalYear: year,
+            startDate: start,
+            endDate: end
+        });
+    };
+
+    const handleDateChange = (key: 'startDate' | 'endDate', value: string) => {
+        if (filters.periodMode === 'fiscalYear' && filters.fiscalYear) {
+            const bounds = fiscalBounds(filters.fiscalYear);
+            const currentStart = key === 'startDate' ? value : filters.startDate;
+            const currentEnd = key === 'endDate' ? value : filters.endDate;
+            const stillFiscal = currentStart === bounds.start && currentEnd === bounds.end;
+            onFilterChange({
+                ...filters,
+                [key]: value,
+                periodMode: stillFiscal ? 'fiscalYear' : 'custom',
+                fiscalYear: stillFiscal ? filters.fiscalYear : undefined
+            });
+            return;
+        }
+
+        onFilterChange({
+            ...filters,
+            [key]: value,
+            periodMode: (value || (key === 'startDate' ? filters.endDate : filters.startDate)) ? 'custom' : 'all',
+            fiscalYear: undefined
+        });
+    };
+
+    const periodSelectValue =
+        filters.periodMode === 'fiscalYear' && filters.fiscalYear
+            ? String(filters.fiscalYear)
+            : filters.periodMode === 'custom'
+                ? 'custom'
+                : 'all';
 
     if (!isOpen) return null;
 
@@ -94,17 +167,34 @@ const EconomicFiltersPanel: React.FC<EconomicFiltersPanelProps> = ({
                     <div>
                         <h3 className="app-title mb-4 ml-1">Periodo Global</h3>
 
+                        <div className="flex flex-col gap-2 mb-4">
+                            <label className="app-label-block px-1">Ejercicio</label>
+                            <div className="relative">
+                                <select
+                                    value={periodSelectValue}
+                                    onChange={(e) => handlePeriodModeChange(e.target.value)}
+                                    className="w-full bg-slate-50 border border-[#cfdbe7] rounded-lg h-12 pl-4 pr-10 text-base font-normal text-[#0d141b] appearance-none focus:ring-2 focus:ring-[#1380ec]/20 outline-none transition-all"
+                                >
+                                    <option value="all">Todos</option>
+                                    <option value="custom">Personalizado</option>
+                                    {availableYears.map((year) => (
+                                        <option key={year} value={year}>{year}</option>
+                                    ))}
+                                </select>
+                                <Activity className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                            </div>
+                        </div>
 
                         <div className="space-y-4">
                             <SmartDatePicker
                                 label="Fecha desde"
                                 value={filters.startDate}
-                                onChange={(val) => updateFilter('startDate', val)}
+                                onChange={(val) => handleDateChange('startDate', val)}
                             />
                             <SmartDatePicker
                                 label="Fecha hasta"
                                 value={filters.endDate}
-                                onChange={(val) => updateFilter('endDate', val)}
+                                onChange={(val) => handleDateChange('endDate', val)}
                             />
                         </div>
                     </div>

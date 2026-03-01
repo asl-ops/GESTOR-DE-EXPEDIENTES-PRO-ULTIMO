@@ -1,15 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Client as ClientV2, ClientCreateInput } from '@/types/client';
 import { searchClients, createClient } from '@/services/clientService';
+import { searchArchiveClients, rescueArchiveClient } from '@/services/clientArchiveService';
 import { isMostlyNumeric, normalizeText } from '@/utils/normalize';
 import { Search, X, History, ChevronDown } from 'lucide-react';
 import { useAppContext } from '@/contexts/AppContext';
+import { Button } from '@/components/ui/Button';
 import {
     pushRecentClientIdentifier,
     readRecentClientIdentifiers,
     normalizeRecentClientIdentifier,
     type RecentClientIdentifierEntry
 } from '@/utils/recentClientIdentifiers';
+import type { ClientArchiveRecord } from '@/types';
 
 type Props = {
     valueClientId?: string | null;
@@ -65,7 +68,9 @@ export const ClientTypeahead: React.FC<Props> = ({
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [items, setItems] = useState<ClientV2[]>([]);
+    const [archiveItems, setArchiveItems] = useState<ClientArchiveRecord[]>([]);
     const [error, setError] = useState<string | null>(null);
+    const [rescuingArchiveId, setRescuingArchiveId] = useState<string | null>(null);
     const [recentIdentifiers, setRecentIdentifiers] = useState<RecentClientIdentifierEntry[]>([]);
     const [isRecentsOpen, setIsRecentsOpen] = useState(false);
 
@@ -93,6 +98,7 @@ export const ClientTypeahead: React.FC<Props> = ({
         async function run() {
             if (!shouldSearch || disabled) {
                 setItems([]);
+                setArchiveItems([]);
                 setLoading(false);
                 setError(null);
                 return;
@@ -102,13 +108,18 @@ export const ClientTypeahead: React.FC<Props> = ({
             setError(null);
 
             try {
-                const res = await searchClients({ q: debounced.trim(), limit });
+                const [res, archiveRes] = await Promise.all([
+                    searchClients({ q: debounced.trim(), limit }),
+                    searchArchiveClients({ q: debounced.trim(), limit: 8 })
+                ]);
                 if (cancelled) return;
                 setItems(res.items ?? []);
+                setArchiveItems(archiveRes.items ?? []);
             } catch (e: any) {
                 if (cancelled) return;
                 setError(e?.message ?? 'Error buscando clientes');
                 setItems([]);
+                setArchiveItems([]);
             } finally {
                 if (!cancelled) setLoading(false);
             }
@@ -164,8 +175,9 @@ export const ClientTypeahead: React.FC<Props> = ({
         if (!q) return false;
         if (!shouldSearch) return false;
         if (items.length > 0) return false; // si ya hay resultados, no estorbes
+        if (archiveItems.length > 0) return false; // si existe en almacén, priorizar rescate
         return true;
-    }, [enableQuickCreate, debounced, shouldSearch, items.length]);
+    }, [enableQuickCreate, debounced, shouldSearch, items.length, archiveItems.length]);
 
     const handleChange = (v: string) => {
         setInput(v);
@@ -239,6 +251,20 @@ export const ClientTypeahead: React.FC<Props> = ({
             setError(e?.message ?? 'No se pudo crear el cliente');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const rescueFromArchive = async (item: ClientArchiveRecord) => {
+        setRescuingArchiveId(item.id);
+        setError(null);
+        try {
+            const rescuedClient = await rescueArchiveClient(item.id, currentUser?.id);
+            setArchiveItems(prev => prev.filter(x => x.id !== item.id));
+            pick(rescuedClient);
+        } catch (e: any) {
+            setError(e?.message ?? 'No se pudo rescatar el cliente desde el almacén');
+        } finally {
+            setRescuingArchiveId(null);
         }
     };
 
@@ -330,7 +356,7 @@ export const ClientTypeahead: React.FC<Props> = ({
                     )}
 
                     {!loading && !error && items.length > 0 && (
-                        <ul className="overflow-auto max-h-72">
+                        <ul className="overflow-auto max-h-64">
                             {items.map((c) => (
                                 <li key={c.id} className="border-b border-slate-100 last:border-b-0">
                                     <button
@@ -351,6 +377,44 @@ export const ClientTypeahead: React.FC<Props> = ({
                                 </li>
                             ))}
                         </ul>
+                    )}
+
+                    {!loading && !error && archiveItems.length > 0 && (
+                        <div className="border-t border-slate-100">
+                            <div className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-50">
+                                Almacén histórico (rescate manual)
+                            </div>
+                            <ul className="overflow-auto max-h-56">
+                                {archiveItems.map((a) => (
+                                    <li key={a.id} className="border-b border-slate-100 last:border-b-0">
+                                        <div className="px-4 py-3 flex items-center gap-3">
+                                            <div className="min-w-0 flex-1">
+                                                <div className="text-sm font-normal text-slate-800 uppercase tracking-tight truncate">{a.nombre}</div>
+                                                <div className="app-label !text-slate-400 !lowercase mt-1 truncate">
+                                                    {a.documento ? `doc: ${a.documento}` : 'sin documento'}
+                                                    {a.cuentaContable ? ` · cta: ${a.cuentaContable}` : ''}
+                                                    {a.provincia ? ` · ${a.provincia}` : ''}
+                                                </div>
+                                            </div>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-8 px-3 rounded-lg border-sky-200 text-sky-600 hover:border-sky-300 hover:bg-sky-50"
+                                                disabled={rescuingArchiveId === a.id}
+                                                isLoading={rescuingArchiveId === a.id}
+                                                onMouseDown={(e) => {
+                                                    e.preventDefault();
+                                                    void rescueFromArchive(a);
+                                                }}
+                                            >
+                                                Rescatar
+                                            </Button>
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
                     )}
 
                     {!loading && !error && showQuickCreate && (

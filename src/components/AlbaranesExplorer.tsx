@@ -6,22 +6,24 @@ import {
     Printer,
     Plus,
     X,
-    Filter,
     ArrowUpDown,
     MoreHorizontal,
     History,
-    ChevronDown
+    ChevronDown,
+    Copy
 } from 'lucide-react';
 import { DeliveryNote } from '../types/billing';
 import { useBilling } from '../hooks/useBilling';
 import { useToast } from '../hooks/useToast';
 import { useAppContext } from '../contexts/AppContext';
 import { BackToHubButton } from './ui/BackToHubButton';
+import { BackToClientNavigationButton } from './ui/BackToClientNavigationButton';
 import { ResizableExplorerTable } from './ui/ResizableExplorerTable';
 import { Button } from './ui/Button';
 import { cn } from '../utils/cn';
 import Breadcrumbs from './ui/Breadcrumbs';
 import { ColumnSelectorMenu, type ColumnSelectorOption } from './ui/ColumnSelectorMenu';
+import { PremiumFilterButton } from './ui/PremiumFilterButton';
 import { navigateToModule } from '@/utils/moduleNavigation';
 import {
     pushRecentClientIdentifier,
@@ -29,6 +31,8 @@ import {
     normalizeRecentClientIdentifier,
     type RecentClientIdentifierEntry
 } from '@/utils/recentClientIdentifiers';
+import { CopyAction } from './ui/ActionFeedback';
+import { getClientNavigationReturnPath, saveClientNavigationContext } from '@/utils/clientNavigationContext';
 
 interface AlbaranesExplorerProps {
     onReturn: () => void;
@@ -115,7 +119,16 @@ const ExpedientePreviewPopover: React.FC<{
                             <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
                                     <span className="text-xs font-medium text-slate-500 block mb-1">Identificador</span>
-                                    <span className="text-slate-700">{expediente.clientSnapshot?.documento || 'N/A'}</span>
+                                    {expediente.clientSnapshot?.documento ? (
+                                        <CopyAction text={expediente.clientSnapshot.documento}>
+                                            <div className="inline-flex items-center gap-1 group/copy">
+                                                <span className="text-slate-700">{expediente.clientSnapshot.documento}</span>
+                                                <Copy size={12} className="text-slate-300 group-hover/copy:text-sky-500" />
+                                            </div>
+                                        </CopyAction>
+                                    ) : (
+                                        <span className="text-slate-700">N/A</span>
+                                    )}
                                 </div>
                                 <div>
                                     <span className="text-xs font-medium text-slate-500 block mb-1">Responsable</span>
@@ -285,8 +298,17 @@ const AlbaranesExplorer: React.FC<AlbaranesExplorerProps> = () => {
     useEffect(() => {
         const params = new URLSearchParams(window.location.hash.split('?')[1]);
         const clientId = params.get('clientId');
+        const identifier = params.get('identifier');
+        const clientName = params.get('clientName');
         if (clientId) {
             setSelectedClientId(clientId);
+            saveClientNavigationContext({
+                active: true,
+                clientId,
+                identifier: identifier || undefined,
+                clientName: clientName || undefined,
+                sourceModule: 'billing'
+            });
         }
     }, []);
 
@@ -489,49 +511,26 @@ const AlbaranesExplorer: React.FC<AlbaranesExplorerProps> = () => {
 
                         {/* Botón Volver a Clientes - Solo visible cuando se filtra por cliente */}
                         {selectedClientId && (
-                            <button
+                            <BackToClientNavigationButton
                                 onClick={() => {
                                     setSelectedClientId(null);
-                                    navigateToModule('/clients');
+                                    navigateToModule(getClientNavigationReturnPath());
                                 }}
-                                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200 hover:border-slate-300 transition-all shadow-sm hover:shadow-md active:scale-95 group"
-                                title="Volver al explorador de clientes"
-                            >
-                                <svg className="w-4 h-4 text-slate-600 group-hover:text-slate-700 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                                </svg>
-                                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                                    Volver a Clientes
-                                </span>
-                            </button>
+                            />
                         )}
 
-                        {/* Filtros button */}
-                        <button
+                        <PremiumFilterButton
+                            isActive={showFilters}
                             onClick={() => setShowFilters(!showFilters)}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all shadow-sm hover:shadow-md active:scale-95 group relative ${showFilters
-                                ? 'bg-sky-500 border-sky-600 text-white'
-                                : 'bg-gradient-to-r from-sky-50 to-indigo-50 border-sky-200 hover:border-sky-300'
-                                }`}
-                            title="Abrir panel de filtros"
-                        >
-                            <Filter className={`w-4 h-4 transition-colors ${showFilters
-                                ? 'text-white'
-                                : 'text-sky-600 group-hover:text-sky-700'
-                                }`} />
-                            <span className={`text-xs font-bold uppercase tracking-wider ${showFilters
-                                ? 'text-white'
-                                : 'text-sky-700'
-                                }`}>
-                                Filtros
-                            </span>
-                        </button>
+                            tooltip="Filtrar albaranes"
+                        />
 
                         <ColumnSelectorMenu
                             title="Columnas"
                             options={albaranesColumnOptions}
                             visibleIds={visibleColumns}
                             onToggle={toggleVisibleColumn}
+                            iconOnly
                         />
                     </div>
                 </div>

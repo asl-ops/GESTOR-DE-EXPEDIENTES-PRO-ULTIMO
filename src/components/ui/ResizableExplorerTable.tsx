@@ -8,6 +8,7 @@ export interface ExplorerColumn<T> {
     defaultWidth: number;
     align?: 'left' | 'center' | 'right';
     sortable?: boolean;
+    truncate?: boolean;
     render: (row: T) => React.ReactNode;
 }
 
@@ -174,10 +175,11 @@ export function ResizableExplorerTable<T>({
                             >
                                 {columns.map((col) => {
                                     const alignClass = col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left';
+                                    const truncateClass = col.truncate === false ? '' : 'truncate';
                                     return (
                                         <td
                                             key={col.id}
-                                            className={`${rowHeightClass} px-3 ${cellTextSize} font-normal leading-tight truncate ${alignClass} text-slate-700`}
+                                            className={`${rowHeightClass} px-3 ${cellTextSize} font-normal leading-tight ${truncateClass} ${alignClass} text-slate-700`}
                                             onClick={(col.id === 'select' || col.id === 'actions' || col.id === 'quick_view') ? (e) => e.stopPropagation() : undefined}
                                         >
                                             {col.render(row)}

@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import type { Client, ClientSearchParams, ClientFilters } from '@/types/client';
 import { searchClients } from '@/services/clientService';
-import { Search, Plus, Filter, FolderOpen, MoreHorizontal, Check, Users, Receipt, RefreshCw, X, List, FileText, FileCheck, Wallet, Eye, History, ChevronDown } from 'lucide-react';
+import { Search, Plus, FolderOpen, MoreHorizontal, Check, Users, Receipt, RefreshCw, X, List, FileText, FileCheck, Wallet, Eye, History, ChevronDown, Copy } from 'lucide-react';
 import { useConfirmation } from '@/hooks/useConfirmation';
 import ConfirmationModal from './ConfirmationModal';
 import { useHashRouter } from '@/hooks/useHashRouter';
@@ -13,6 +13,7 @@ import ClientPreviewModal from './ClientPreviewModal';
 import PaginationControls, { PageSize } from './PaginationControls';
 import { ClientListFilter } from '@/types/clientList';
 import { BackToHubButton } from './ui/BackToHubButton';
+import { PremiumFilterButton } from './ui/PremiumFilterButton';
 import ClientFilterPanel from './ClientFilterPanel';
 import { getPaymentMethods } from '@/services/paymentMethodService';
 import type { PaymentMethod } from '@/types/paymentMethod';
@@ -23,6 +24,7 @@ import {
     readRecentClientIdentifiers,
     type RecentClientIdentifierEntry
 } from '@/utils/recentClientIdentifiers';
+import { CopyAction } from './ui/ActionFeedback';
 
 
 interface ClientExplorerProps {
@@ -34,6 +36,8 @@ interface ClientExplorerProps {
 
 const SHOW_CLIENT_SUMMARY = false; // Feature flag to show/hide the stats summary bar
 const CLIENTS_VISIBLE_COLUMNS_KEY = 'clients-visible-columns-v1';
+const FILTER_PANEL_AUTO_CLOSE_MS = 20000;
+const CLIENT_FILTERS_PINNED_KEY = 'clients-filters-pinned';
 
 const normalizeDoc = (value?: string | null) =>
     (value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -69,6 +73,9 @@ const ClientExplorer: React.FC<ClientExplorerProps> = ({
     const [isListadosOpen, setIsListadosOpen] = useState(false);
     const [listadosTab, setListadosTab] = useState<'sistema' | 'mis-listas'>('sistema');
     const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+    const [isFilterPanelPinned, setIsFilterPanelPinned] = useState(() => {
+        return localStorage.getItem(CLIENT_FILTERS_PINNED_KEY) === 'true';
+    });
     const [clientFilters, setClientFilters] = useState<ClientFilters>({});
     const clientColumnOptions: ColumnSelectorOption[] = [
         { id: 'identifier', label: 'Identificador' },
@@ -579,18 +586,22 @@ const ClientExplorer: React.FC<ClientExplorerProps> = ({
         return count;
     }, [clientFilters]);
 
+    useEffect(() => {
+        localStorage.setItem(CLIENT_FILTERS_PINNED_KEY, String(isFilterPanelPinned));
+    }, [isFilterPanelPinned]);
+
     // ✅ Cerrar automáticamente el panel de filtros después de inactividad
     useEffect(() => {
         // Solo cerrar si el panel está abierto Y no hay filtros activos
-        if (isFilterPanelOpen && activeFilterCount === 0) {
-            // Esperar 5 segundos de inactividad antes de cerrar
+        if (isFilterPanelOpen && activeFilterCount === 0 && !isFilterPanelPinned) {
+            // Esperar un margen amplio de inactividad antes de cerrar
             const timer = setTimeout(() => {
                 setIsFilterPanelOpen(false);
-            }, 5000);
+            }, FILTER_PANEL_AUTO_CLOSE_MS);
 
             return () => clearTimeout(timer);
         }
-    }, [isFilterPanelOpen, activeFilterCount]);
+    }, [isFilterPanelOpen, activeFilterCount, isFilterPanelPinned]);
 
     const handleClearFilters = () => {
         setClientFilters({});
@@ -606,6 +617,8 @@ const ClientExplorer: React.FC<ClientExplorerProps> = ({
                 onClose={() => setIsFilterPanelOpen(false)}
                 paymentMethods={paymentMethods}
                 isOpen={isFilterPanelOpen}
+                isPinned={isFilterPanelPinned}
+                onTogglePin={() => setIsFilterPanelPinned(prev => !prev)}
             />
 
             {/* --- MAIN CONTENT (Protagonist) --- */}
@@ -627,43 +640,36 @@ const ClientExplorer: React.FC<ClientExplorerProps> = ({
                                 <BackToHubButton />
                             </>
                         )}
-                        <button
-                            onClick={() => setIsListadosOpen(!isListadosOpen)}
-                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-50 to-indigo-50 border border-sky-200 hover:border-sky-300 transition-all shadow-sm hover:shadow-md active:scale-95 group relative"
-                            title="Abrir menú de listados"
-                        >
-                            <List className="w-4 h-4 text-sky-600 group-hover:text-sky-700 transition-colors" />
-                            <span className="text-xs font-bold text-sky-700 uppercase tracking-wider">
-                                Listados
+                        <div className="relative group">
+                            <button
+                                onClick={() => setIsListadosOpen(!isListadosOpen)}
+                                aria-label="Listados"
+                                className={`relative flex items-center justify-center w-11 h-11 border rounded-2xl shadow-sm transition-all duration-300 active:scale-95 ${isListadosOpen
+                                    ? 'bg-[#EBF5FF] border-[#B2D7FF]'
+                                    : 'bg-[#FAFAFA] border-slate-200 hover:bg-[#EBF5FF] hover:border-[#B2D7FF]'
+                                    }`}
+                                title="Abrir menú de listados"
+                            >
+                                <List className={`w-5 h-5 transition-colors duration-300 ${isListadosOpen ? 'text-[#0071E3]' : 'text-slate-600 group-hover:text-[#0071E3]'}`} />
+                            </button>
+                            <span className="pointer-events-none absolute top-full mt-3 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-slate-800 text-white text-[9px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-300 shadow-xl z-50 whitespace-nowrap tracking-wider">
+                                LISTADOS
+                                <span className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-800 rotate-45" />
                             </span>
-                        </button>
+                        </div>
 
-                        {/* Filtros button */}
-                        <button
+                        <PremiumFilterButton
+                            isActive={isFilterPanelOpen}
                             onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all shadow-sm hover:shadow-md active:scale-95 group relative ${isFilterPanelOpen
-                                ? 'bg-sky-500 border-sky-600 text-white'
-                                : 'bg-gradient-to-r from-sky-50 to-indigo-50 border-sky-200 hover:border-sky-300'
-                                }`}
-                            title="Abrir panel de filtros"
-                        >
-                            <Filter className={`w-4 h-4 transition-colors ${isFilterPanelOpen
-                                ? 'text-white'
-                                : 'text-sky-600 group-hover:text-sky-700'
-                                }`} />
-                            <span className={`text-xs font-bold uppercase tracking-wider ${isFilterPanelOpen
-                                ? 'text-white'
-                                : 'text-sky-700'
-                                }`}>
-                                Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-                            </span>
-                        </button>
+                            tooltip={`Filtrar clientes${activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}`}
+                        />
 
                         <ColumnSelectorMenu
                             title="Columnas"
                             options={clientColumnOptions}
                             visibleIds={visibleColumns}
                             onToggle={toggleVisibleColumn}
+                            iconOnly
                         />
 
                         {/* Active filter chips */}
@@ -699,16 +705,20 @@ const ClientExplorer: React.FC<ClientExplorerProps> = ({
 
                     </div>
                     <div className="flex items-center gap-3">
-                        <button
-                            onClick={() => { setEditingId(null); setModalOpen(true); }}
-                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-50 to-indigo-50 border border-sky-200 hover:border-sky-300 transition-all shadow-sm hover:shadow-md active:scale-95 group"
-                            title="Crear nuevo cliente"
-                        >
-                            <Plus className="w-4 h-4 text-sky-600 group-hover:text-sky-700 transition-colors" />
-                            <span className="text-xs font-bold text-sky-700 uppercase tracking-wider">
-                                Nuevo Cliente
+                        <div className="relative group">
+                            <button
+                                onClick={() => { setEditingId(null); setModalOpen(true); }}
+                                aria-label="Nuevo Cliente"
+                                className="relative flex items-center justify-center w-11 h-11 bg-blue-50/60 border border-blue-100 rounded-2xl shadow-sm transition-all duration-300 hover:bg-[#EBF5FF] hover:border-[#B2D7FF] hover:scale-110 active:scale-95"
+                                title="Crear nuevo cliente"
+                            >
+                                <Plus className="w-5 h-5 text-[#0071E3]" strokeWidth={2.5} />
+                            </button>
+                            <span className="pointer-events-none absolute top-full mt-3 right-0 px-3 py-1.5 bg-slate-800 text-white text-[9px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-300 shadow-xl z-50 whitespace-nowrap tracking-wider">
+                                NUEVO CLIENTE
+                                <span className="absolute -top-1 right-4 w-2 h-2 bg-slate-800 rotate-45" />
                             </span>
-                        </button>
+                        </div>
                     </div>
                 </div>
 
@@ -828,7 +838,16 @@ const ClientExplorer: React.FC<ClientExplorerProps> = ({
                                             className={`group cursor-pointer transition-all hover:bg-slate-50/50 ${isSelected ? 'bg-sky-50/30' : ''}`}
                                         >
                                             {visibleColumnsSet.has('identifier') && <td className="px-6 py-5">
-                                                <span className="text-xs font-medium text-sky-600 hover:underline">{client.documento || '-'}</span>
+                                                {client.documento ? (
+                                                    <CopyAction text={client.documento}>
+                                                        <div className="inline-flex items-center gap-1 group/copy">
+                                                            <span className="text-xs font-medium text-sky-600 hover:underline">{client.documento}</span>
+                                                            <Copy size={11} className="text-slate-300 group-hover/copy:text-sky-500" />
+                                                        </div>
+                                                    </CopyAction>
+                                                ) : (
+                                                    <span className="text-xs font-medium text-sky-600">-</span>
+                                                )}
                                             </td>}
                                             {visibleColumnsSet.has('client') && <td className="px-6 py-5">
                                                 <div className="flex flex-col">

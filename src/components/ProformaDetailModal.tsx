@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Trash2, Send, Lock, ShieldCheck, Check, FileText, Calendar } from 'lucide-react';
+import { Trash2, Send, Lock, ShieldCheck, Check, FileText, Calendar, Copy } from 'lucide-react';
 import { HeaderActions } from './ui/HeaderActions';
 import { pdf } from '@react-pdf/renderer';
 import { Proforma, ProformaStatus } from '../types/billing';
@@ -8,6 +8,7 @@ import { useCompanySettings } from '../hooks/useCompanySettings';
 import ProformaPDFDocument from './ProformaPDFDocument';
 import { useConfirmation, confirmVoid, confirmDelete } from '@/hooks/useConfirmation';
 import ConfirmationModal from './ConfirmationModal';
+import { CopyAction } from './ui/ActionFeedback';
 
 interface Props {
     isOpen: boolean;
@@ -183,7 +184,18 @@ const ProformaDetailModal: React.FC<Props> = ({ isOpen, onClose, proforma, onUpd
                             {proforma.clientName ? (
                                 <>
                                     <div className="font-semibold text-slate-900 text-lg">{proforma.clientName}</div>
-                                    <div className="text-xs text-slate-500 font-mono mt-1">{proforma.clientIdentity || 'Sin documento'}</div>
+                                    <div className="text-xs text-slate-500 font-mono mt-1">
+                                        {proforma.clientIdentity ? (
+                                            <CopyAction text={proforma.clientIdentity}>
+                                                <div className="inline-flex items-center gap-1 group/copy">
+                                                    <span>{proforma.clientIdentity}</span>
+                                                    <Copy size={11} className="text-slate-300 group-hover/copy:text-sky-500" />
+                                                </div>
+                                            </CopyAction>
+                                        ) : (
+                                            'Sin documento'
+                                        )}
+                                    </div>
                                 </>
                             ) : (
                                 <div className="text-slate-400 italic">Sin cliente asignado</div>

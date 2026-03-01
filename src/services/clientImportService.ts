@@ -41,6 +41,18 @@ interface ImportOptions {
  * Compatible con exportaciones de CCS/Econ CEGID
  */
 export const ClientImportService = {
+    resolveDatosContactoImportadosCCS(row: any): string | undefined {
+        const value = row.datosContactoImportadosCCS
+            ?? row.datos_contacto_importados_ccs
+            ?? row.contactoImportadoCCS
+            ?? row.contacto_importado_ccs
+            ?? row.datosContactoCCS
+            ?? row.datos_contacto_ccs;
+
+        if (value === undefined || value === null) return undefined;
+        const normalized = String(value).trim();
+        return normalized || undefined;
+    },
 
     /**
      * Parsea un archivo Excel y extrae la hoja "Clientes"
@@ -214,6 +226,7 @@ export const ClientImportService = {
             iban: row.iban?.trim() || undefined,
             bancoCobro: row.bancoCobro?.trim() || undefined,
             cuentaCobro: row.cuentaCobro?.trim() || undefined,
+            datosContactoImportadosCCS: this.resolveDatosContactoImportadosCCS(row),
             notas: row.notas?.trim() || undefined
         };
 

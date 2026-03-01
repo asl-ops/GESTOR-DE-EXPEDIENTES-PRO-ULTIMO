@@ -119,7 +119,7 @@ const TasksDashboard: React.FC<TasksDashboardProps> = ({ onUpdateTaskStatus, onG
                         )}
                     </div>
                 </div>
-                <footer className="text-center mt-12 text-slate-400 text-[10px] font-normal uppercase tracking-widest"><p>&copy; {new Date().getFullYear()} Gestor de Expedientes Pro • Sistema de Tareas v3.2</p></footer>
+                <footer className="text-center mt-12 text-slate-400 text-[10px] font-normal uppercase tracking-widest"><p>&copy; {new Date().getFullYear()} AGA Nexus • Sistema de Tareas v3.2</p></footer>
             </div>
         </div>
     );

@@ -15,11 +15,15 @@ const ClientExplorer = lazy(() => import('@/components/ClientExplorer'));
 const AlbaranesExplorer = lazy(() => import('@/components/AlbaranesExplorer'));
 const ProformasView = lazy(() => import('@/components/ProformasView'));
 const InvoicesView = lazy(() => import('@/components/InvoicesView'));
-const ClientBillingPlaceholder = React.lazy(() => import('./components/ClientBillingPlaceholder'));
+const CashView = lazy(() => import('@/components/CashView'));
+const EconomicView = lazy(() => import('@/components/EconomicView'));
+const Configuration = lazy(() => import('@/components/Configuration'));
+const LegacyDashboard = lazy(() => import('@/components/legacy/LegacyDashboard'));
+const ClientBillingPlaceholder = lazy(() => import('./components/ClientBillingPlaceholder'));
 const MainNavigationHub = lazy(() => import('@/components/MainNavigationHub').then(module => ({ default: module.MainNavigationHub })));
 import NewCaseWizard from '@/components/NewCaseWizard';
 import { Task } from '@/types';
-import { getViewMode } from '@/services/viewModeService';
+import { getViewMode, VIEW_MODE_CHANGED_EVENT, ViewMode } from '@/services/viewModeService';
 
 
 interface VisualSettings {
@@ -53,6 +57,7 @@ const App: React.FC = () => {
   });
 
   const [isThemeModalOpen, setIsThemeModalOpen] = React.useState(false);
+  const [viewMode, setViewModeState] = React.useState<ViewMode>(getViewMode());
 
   // Reset indicator
   const isModified = React.useMemo(() => {
@@ -84,6 +89,51 @@ const App: React.FC = () => {
 
     localStorage.setItem('ge_visual_settings', JSON.stringify(visualSettings));
   }, [visualSettings]);
+
+  useEffect(() => {
+    const syncViewMode = (event: Event) => {
+      const customEvent = event as CustomEvent<ViewMode>;
+      if (customEvent.detail === 'menu' || customEvent.detail === 'cards') {
+        setViewModeState(customEvent.detail);
+        return;
+      }
+      setViewModeState(getViewMode());
+    };
+
+    window.addEventListener(VIEW_MODE_CHANGED_EVENT, syncViewMode as EventListener);
+    window.addEventListener('storage', syncViewMode as EventListener);
+    return () => {
+      window.removeEventListener(VIEW_MODE_CHANGED_EVENT, syncViewMode as EventListener);
+      window.removeEventListener('storage', syncViewMode as EventListener);
+    };
+  }, []);
+
+  // Prefetch high-traffic modules during idle time to speed up first navigation.
+  useEffect(() => {
+    const preloadCommonViews = () => {
+      void import('@/components/EconomicView');
+      void import('@/components/ClientExplorer');
+      void import('@/components/InvoicesView');
+      void import('@/components/CashView');
+      void import('@/components/AlbaranesExplorer');
+      void import('@/components/ProformasView');
+      void import('@/components/Configuration');
+      void import('@/components/MainNavigationHub');
+    };
+
+    const win = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+
+    if (typeof win.requestIdleCallback === 'function') {
+      const idleId = win.requestIdleCallback(() => preloadCommonViews(), { timeout: 1400 });
+      return () => win.cancelIdleCallback?.(idleId);
+    }
+
+    const timeoutId = window.setTimeout(preloadCommonViews, 500);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
 
   const {
     client, setClient,
@@ -190,7 +240,6 @@ const App: React.FC = () => {
   );
 
   const renderContent = () => {
-    const viewMode = getViewMode();
     if (viewMode === 'cards') {
       return <Suspense fallback={loadingFallback}><MainNavigationHub /></Suspense>;
     }
@@ -210,14 +259,14 @@ const App: React.FC = () => {
         return <Suspense fallback={loadingFallback}><ProformasView /></Suspense>;
       case 'invoices':
         return <Suspense fallback={loadingFallback}><InvoicesView /></Suspense>;
+      case 'cash':
+        return <Suspense fallback={loadingFallback}><CashView /></Suspense>;
       case 'client-billing':
         const billingClientId = new URLSearchParams(window.location.hash.split('?')[1]).get('clientId');
         return <Suspense fallback={loadingFallback}><ClientBillingPlaceholder clientId={billingClientId || undefined} onBack={() => navigateTo('/clients')} /></Suspense>;
       case 'economico':
-        const EconomicView = lazy(() => import('@/components/EconomicView'));
         return <Suspense fallback={loadingFallback}><EconomicView /></Suspense>;
       case 'config':
-        const Configuration = lazy(() => import('@/components/Configuration'));
         return <Suspense fallback={loadingFallback}><Configuration /></Suspense>;
       case 'detail':
         if (!fileNumberParam) return loadingFallback;
@@ -267,7 +316,6 @@ const App: React.FC = () => {
           </Suspense>
         );
       case 'legacy':
-        const LegacyDashboard = lazy(() => import('@/components/legacy/LegacyDashboard'));
         return (
           <Suspense fallback={loadingFallback}>
             <div className="bg-amber-50 border-b border-amber-200 p-2 text-center text-[10px] text-amber-800 sticky top-0 z-[100] uppercase tracking-widest font-normal">
@@ -313,6 +361,7 @@ const App: React.FC = () => {
       case 'clients': return 'Gestión de Clientes';
       case 'billing': return 'Albaranes';
       case 'economico': return 'Gestión Económica de Clientes';
+      case 'cash': return 'Caja Diaria';
       case 'config': return 'Configuración del Sistema';
       case 'detail': return fileNumberParam === 'new' ? 'Nuevo Expediente' : `Expediente ${fileNumberParam}`;
       default: return 'Gestor Pro';

@@ -9,6 +9,7 @@ import ConfirmationModal from './ConfirmationModal';
 import { CopyAction } from './ui/ActionFeedback';
 import { useHashRouter } from '@/hooks/useHashRouter';
 import { useToast } from '@/hooks/useToast';
+import { useAppContext } from '@/contexts/AppContext';
 import { PaymentMethod } from '@/types/paymentMethod';
 import { getPaymentMethods } from '@/services/paymentMethodService';
 import { Button } from './ui/Button';
@@ -111,6 +112,7 @@ interface ClientFormState {
     iban: string;
     bancoRemesa: string;
     formaCobroId: string;
+    datosContactoImportadosCCS: string;
     notas: string;
     observaciones: Observacion[];
     tipo: ClientType;
@@ -139,16 +141,19 @@ interface ClientFormState {
 const ClientDetailModal: React.FC<Props> = ({ clientId, onClose, onSaved, onSelectClient }) => {
     const { navigateTo: _navigateTo } = useHashRouter();
     const { addToast } = useToast();
+    const { currentUser } = useAppContext();
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
     const [showConfirmClose, setShowConfirmClose] = useState(false);
+    const [showConfirmVerify, setShowConfirmVerify] = useState(false);
     const [_showNifPreview, _setShowNifPreview] = useState(false);
     const [_showCopyFeedback, _setShowCopyFeedback] = useState(false);
     const [_isDuplicate, _setIsDuplicate] = useState(false);
     const [_duplicateClientName, _setDuplicateClientName] = useState("");
     const [_duplicateClientId, _setDuplicateClientId] = useState<string | null>(null);
     const [editingAdminId, setEditingAdminId] = useState<string | null>(null);
+    const [verification, setVerification] = useState<{ by: string; at?: string } | null>(null);
 
     // Data State
     const [_cases, setCases] = useState<CaseRecord[]>([]);
@@ -173,6 +178,7 @@ const ClientDetailModal: React.FC<Props> = ({ clientId, onClose, onSaved, onSele
         iban: '',
         bancoRemesa: '',
         formaCobroId: '',
+        datosContactoImportadosCCS: '',
         notas: '',
         observaciones: [],
         tipo: 'PARTICULAR',
@@ -278,6 +284,7 @@ const ClientDetailModal: React.FC<Props> = ({ clientId, onClose, onSaved, onSele
                             iban: c.iban ?? '',
                             bancoRemesa: c.bancoRemesa ?? '',
                             formaCobroId: c.formaCobroId ?? '',
+                            datosContactoImportadosCCS: c.datosContactoImportadosCCS ?? '',
                             notas: c.notas ?? '',
                             observaciones: c.observaciones ?? [],
                             tipo: detectClientType(c.documento || ''),
@@ -302,6 +309,7 @@ const ClientDetailModal: React.FC<Props> = ({ clientId, onClose, onSaved, onSele
                             observacionesRegistro: c.observacionesRegistro ?? '',
                         };
                         setForm(newForm);
+                        setVerification(c.verificadoPor ? { by: c.verificadoPor, at: c.verificadoAt } : null);
                         initialFormRef.current = newForm;
                     }
                 } catch (error) {
@@ -313,6 +321,7 @@ const ClientDetailModal: React.FC<Props> = ({ clientId, onClose, onSaved, onSele
             } else {
                 setCases([]);
                 getPaymentMethods().then(setPaymentMethods);
+                setVerification(null);
             }
         }
 
@@ -455,6 +464,7 @@ const ClientDetailModal: React.FC<Props> = ({ clientId, onClose, onSaved, onSele
                 iban: form.iban,
                 bancoRemesa: form.bancoRemesa,
                 formaCobroId: form.formaCobroId,
+                datosContactoImportadosCCS: form.datosContactoImportadosCCS,
                 notas: form.notas,
                 observaciones: form.observaciones,
                 tipo: form.tipo,
@@ -494,6 +504,34 @@ const ClientDetailModal: React.FC<Props> = ({ clientId, onClose, onSaved, onSele
 
     const updateForm = <K extends keyof ClientFormState>(key: K, value: ClientFormState[K]) => {
         setForm((f) => ({ ...f, [key]: value }));
+    };
+
+    const handleVerificationRequest = () => {
+        if (verification?.by) return;
+        if (!clientId) {
+            addToast('Guarda primero el cliente para poder verificar la ficha.', 'warning');
+            return;
+        }
+        setShowConfirmVerify(true);
+    };
+
+    const confirmVerification = async () => {
+        if (!clientId) return;
+        const verifiedBy = currentUser?.name || currentUser?.id || 'USUARIO';
+        const verifiedAt = new Date().toISOString();
+        try {
+            await updateClient(clientId, {
+                verificadoPor: verifiedBy,
+                verificadoAt: verifiedAt
+            });
+            setVerification({ by: verifiedBy, at: verifiedAt });
+            addToast(`Cliente verificado por ${verifiedBy}`, 'success');
+        } catch (error) {
+            console.error('Error setting client verification:', error);
+            addToast('No se pudo registrar la verificación del cliente', 'error');
+        } finally {
+            setShowConfirmVerify(false);
+        }
     };
 
     // Helper Styles
@@ -550,14 +588,33 @@ const ClientDetailModal: React.FC<Props> = ({ clientId, onClose, onSaved, onSele
                             </div>
                         </div>
 
-                        <HeaderActions
-                            onPrimary={save}
-                            primaryIcon={Save}
-                            primaryTooltip={form.estado === 'BAJA' ? 'No se puede guardar un cliente dado de baja' : (saving ? 'Guardando...' : 'Guardar cliente')}
-                            isPrimaryLoading={saving}
-                            primaryDisabled={form.estado === 'BAJA'}
-                            onClose={handleCancel}
-                        />
+                        <div className="flex flex-col items-end gap-2">
+                            <HeaderActions
+                                onPrimary={save}
+                                primaryIcon={Save}
+                                primaryTooltip={form.estado === 'BAJA' ? 'No se puede guardar un cliente dado de baja' : (saving ? 'Guardando...' : 'Guardar cliente')}
+                                isPrimaryLoading={saving}
+                                primaryDisabled={form.estado === 'BAJA'}
+                                onClose={handleCancel}
+                            />
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleVerificationRequest}
+                                disabled={Boolean(verification?.by)}
+                                title={verification?.by ? `Verificado por ${verification.by}` : 'Verificar cliente'}
+                                className={`h-8 min-w-0 px-2.5 rounded-lg ${verification?.by
+                                    ? 'border-emerald-200 text-emerald-600 bg-emerald-50 hover:bg-emerald-50 hover:border-emerald-200'
+                                    : 'border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-500 hover:bg-slate-50'
+                                    }`}
+                            >
+                                <Check size={14} />
+                            </Button>
+                            <span className={`text-[9px] font-bold uppercase tracking-widest ${verification?.by ? 'text-emerald-600' : 'text-slate-300'}`}>
+                                {verification?.by ? `Verificado por ${verification.by}` : 'Pendiente de verificar'}
+                            </span>
+                        </div>
                     </div>
 
                     {/* Tabs */}
@@ -972,6 +1029,15 @@ const ClientDetailModal: React.FC<Props> = ({ clientId, onClose, onSaved, onSele
                                                     <ChevronRight className="w-4 h-4 text-slate-300 absolute right-1 top-1/2 -translate-y-1/2 rotate-90 pointer-events-none" />
                                                 </div>
                                             </div>
+                                        </div>
+                                        <div className="mt-4">
+                                            <label className={labelStyle}>Datos Contacto Importados CCS</label>
+                                            <textarea
+                                                value={form.datosContactoImportadosCCS}
+                                                onChange={e => updateForm('datosContactoImportadosCCS', e.target.value)}
+                                                className="w-full px-3 py-2 bg-white border-b border-[#cfdbe7] text-sm font-normal text-slate-800 focus:border-[#1380ec] outline-none transition-all placeholder:text-slate-300 min-h-[72px]"
+                                                placeholder="Contenido bruto importado de CCS (columna Z)"
+                                            />
                                         </div>
                                     </div>
                                 </div>
@@ -1663,6 +1729,17 @@ const ClientDetailModal: React.FC<Props> = ({ clientId, onClose, onSaved, onSele
                     confirmText="Eliminar"
                     cancelText="Cancelar"
                     variant="danger"
+                />
+
+                <ConfirmationModal
+                    isOpen={showConfirmVerify}
+                    onClose={() => setShowConfirmVerify(false)}
+                    onConfirm={confirmVerification}
+                    title="¿Confirmas verificación?"
+                    message={'Se marcará este cliente como verificado y se guardará el usuario activo en el campo "verificado por".'}
+                    confirmText="Confirmar"
+                    cancelText="Cancelar"
+                    variant="info"
                 />
             </div>
         </div>

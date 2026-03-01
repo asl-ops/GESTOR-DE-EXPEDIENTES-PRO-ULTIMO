@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { CreditCard, FileText, Eye, MoreHorizontal, Printer, Receipt, Filter, X, Calendar } from 'lucide-react';
+import { CreditCard, FileText, Eye, MoreHorizontal, Printer, Receipt, Filter, X, Calendar, Copy } from 'lucide-react';
 import { useBilling } from '../hooks/useBilling';
 import { useInvoices } from '../hooks/useInvoices';
 import { DeliveryNote, ClientDeliveryGroup } from '../types/billing';
@@ -9,6 +9,7 @@ import { useHashRouter } from '../hooks/useHashRouter';
 import BillingFiltersPanel, { BillingFilters } from './BillingFiltersPanel';
 import { BackToHubButton } from './ui/BackToHubButton';
 import Breadcrumbs from './ui/Breadcrumbs';
+import { CopyAction } from './ui/ActionFeedback';
 
 interface BillingViewProps {
 }
@@ -268,7 +269,16 @@ const BillingView: React.FC<BillingViewProps> = () => {
                                         <div>
                                             <h3 className="font-medium text-sm tracking-tight text-slate-700">{group.clientName}</h3>
                                             <div className="text-[10px] text-slate-400 font-mono tracking-wide mt-0.5">
-                                                {group.clientIdentity || 'Sin Documento'} • {group.clientId.slice(0, 8)}...
+                                                {group.clientIdentity ? (
+                                                    <CopyAction text={group.clientIdentity}>
+                                                        <div className="inline-flex items-center gap-1 group/copy">
+                                                            <span>{group.clientIdentity}</span>
+                                                            <Copy size={11} className="text-slate-300 group-hover/copy:text-sky-500" />
+                                                        </div>
+                                                    </CopyAction>
+                                                ) : (
+                                                    'Sin Documento'
+                                                )} • {group.clientId.slice(0, 8)}...
                                             </div>
                                         </div>
                                         <div className="text-[10px] font-bold uppercase tracking-widest bg-slate-200/50 text-slate-500 px-3 py-1 rounded-full">

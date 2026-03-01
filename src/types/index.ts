@@ -47,6 +47,9 @@ export interface Client {
   cuentaCobro?: string;
   iban?: string;
   bancoRemesa?: string;
+  datosContactoImportadosCCS?: string;
+  verificadoPor?: string;
+  verificadoAt?: string;
   notas?: string;
   observaciones?: any[];     // Observacion[] alias
   telefonos?: any[];        // ContactItem[] alias
@@ -97,6 +100,30 @@ export interface Client {
   createdAt?: string;
   updatedAt?: string;
   legalName?: string;
+}
+
+export interface ClientArchiveRecord {
+  id: string;
+  nombre: string;
+  nombreNormalized: string;
+  documento?: string;
+  nif?: string;
+  documentoNormalized?: string;
+  cuentaContable?: string;
+  direccion?: string;
+  poblacion?: string;
+  provincia?: string;
+  iban?: string;
+  datosContactoImportadosCCS?: string;
+  source?: string;
+  sourceSheet?: string;
+  rowNumber?: number;
+  rescatado?: boolean;
+  rescuedClientId?: string;
+  rescuedAt?: string;
+  rescuedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface EconomicLineItem {

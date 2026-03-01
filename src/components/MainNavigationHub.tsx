@@ -5,6 +5,7 @@ import {
     Receipt,
     FileText,
     Euro,
+    Wallet,
     BarChart3,
     Settings,
     ArrowUpRight,
@@ -78,6 +79,16 @@ const navigationCards: NavigationCard[] = [
         route: '/invoices'  // Changed from /facturas
     },
     {
+        id: 'caja',
+        title: 'Caja',
+        subtitle: 'Control diario de ingresos y gastos',
+        icon: Wallet,
+        color: 'text-cyan-600',
+        bgColor: 'bg-cyan-50',
+        hoverColor: 'hover:border-cyan-200 hover:shadow-cyan-500/5',
+        route: '/cash'
+    },
+    {
         id: 'economico',
         title: 'Económico',
         subtitle: 'Análisis financiero y reportes',
@@ -109,7 +120,7 @@ const navigationCards: NavigationCard[] = [
     }
 ];
 
-export const MainNavigationHub: React.FC = () => {
+export const MainNavigationHub: React.FC = React.memo(() => {
     const { appSettings } = useAppContext();
     const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
     const [pendingRoute, setPendingRoute] = useState<string | null>(null);
@@ -132,9 +143,6 @@ export const MainNavigationHub: React.FC = () => {
 
         // Navigate to the route
         window.location.hash = `#${route}`;
-
-        // Reload to apply the view mode change
-        window.location.reload();
     };
 
     const handleAdminConfirm = () => {
@@ -172,18 +180,14 @@ export const MainNavigationHub: React.FC = () => {
 
                 {/* Cards Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {navigationCards.map((card, index) => {
+                    {navigationCards.map((card) => {
                         const Icon = card.icon;
                         return (
                             <button
                                 key={card.id}
                                 onClick={() => handleCardClick(card)}
                                 className={`group flex flex-col p-8 bg-white border-2 border-slate-100 rounded-[32px] transition-all hover:shadow-xl active:scale-95 text-left relative overflow-hidden ${card.hoverColor} animate-in fade-in slide-in-from-bottom-4 zoom-in-95`}
-                                style={{
-                                    animationDelay: `${index * 60}ms`,
-                                    animationDuration: '300ms',
-                                    animationFillMode: 'backwards'
-                                }}
+                                style={{ animationDuration: '180ms' }}
                             >
                                 {/* Icon */}
                                 <div className={`w-16 h-16 ${card.bgColor} rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300`}>
@@ -211,7 +215,7 @@ export const MainNavigationHub: React.FC = () => {
                 </div>
 
                 {/* Footer Hint */}
-                <div className="mt-12 text-center animate-in fade-in duration-1000 delay-500">
+                <div className="mt-12 text-center animate-in fade-in duration-300">
                     <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
                         Puedes cambiar a vista de menú usando el selector en la cabecera
                     </p>
@@ -230,4 +234,4 @@ export const MainNavigationHub: React.FC = () => {
             />
         </div>
     );
-};
+});
